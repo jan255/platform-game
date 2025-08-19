@@ -1,0 +1,1319 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gra Platformowa</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(to bottom, #87CEEB 0%, #98D8E8 50%, #B0E0E6 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: Arial, sans-serif;
+        }
+        canvas {
+            border: 2px solid #333;
+            background: linear-gradient(to bottom, #87CEEB 0%, #98D8E8 50%, #B0E0E6 100%);
+        }
+        .controls {
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            text-align: center;
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+    <div class="controls">
+        <h3>Sterowanie:</h3>
+        <p>← → - ruch w lewo/prawo, SPACJA - skok, 2x SPACJA - wysoki skok</p>
+        <p>PRAWY SHIFT - kucanie (blokuje skok, zwalnia ruch)</p>
+        <p>UWAŻAJ NA DZIURY! Wpadniesz = 3s paraliż (różowy kolor)</p>
+    </div>
+    <canvas id="gameCanvas" width="800" height="400"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        const game = {
+            player: {
+                x: 50,
+                y: 280,
+                width: 40,
+                height: 60,
+                velocityX: 0,
+                velocityY: 0,
+                speed: 5,
+                jumpPower: 15,
+                highJumpPower: 20,
+                onGround: false,
+                canDoubleJump: false,
+                animFrame: 0,
+                stunned: false,
+                stunTime: 0,
+                originalColor: '#4169E1',
+                lastSafeX: 50,
+                lastSafeY: 280,
+                crouching: false,
+                originalHeight: 60
+            },
+            obstacles: [],
+            holes: [],
+            clouds: [],
+            butterflies: [],
+            bees: [],
+            mountains: [],
+            flowers: [],
+            camera: {
+                x: 0
+            },
+            keys: {},
+            spacePressed: false,
+            spaceReleased: true,
+            jumpCount: 0,
+            lastJumpTime: 0
+        };
+
+        function createObstacles() {
+            const obstacles = [];
+            const holes = [];
+            
+            for (let i = 0; i < 25; i++) {
+                const x = 300 + i * 180 + Math.random() * 50;
+                const rand = Math.random();
+                
+                if (rand > 0.85) {
+                    holes.push({
+                        x: x,
+                        y: 340,
+                        width: 60,
+                        height: 60,
+                        type: 'hole'
+                    });
+                } else if (rand > 0.75) {
+                    obstacles.push({
+                        x: x,
+                        y: 250,
+                        width: 30,
+                        height: 90,
+                        type: 'high',
+                        color: '#8B0000'
+                    });
+                } else if (rand > 0.6) {
+                    obstacles.push({
+                        x: x,
+                        y: 240,
+                        width: 80,
+                        height: 75,
+                        type: 'lowBarrier',
+                        color: '#B8860B'
+                    });
+                } else if (rand > 0.5) {
+                    obstacles.push({
+                        x: x,
+                        y: 310,
+                        width: 25,
+                        height: 30,
+                        type: 'spikes',
+                        color: '#FF4500'
+                    });
+                } else if (rand > 0.3) {
+                    obstacles.push({
+                        x: x,
+                        y: 280,
+                        width: 40,
+                        height: 60,
+                        type: 'block',
+                        color: '#654321'
+                    });
+                } else {
+                    obstacles.push({
+                        x: x,
+                        y: 290,
+                        width: 35,
+                        height: 50,
+                        type: 'moving',
+                        color: '#9932CC',
+                        originalY: 290,
+                        moveSpeed: 0.05
+                    });
+                }
+            }
+            game.holes = holes;
+            return obstacles;
+        }
+
+        function createClouds() {
+            const clouds = [];
+            for (let i = 0; i < 15; i++) {
+                clouds.push({
+                    x: Math.random() * 4000,
+                    y: 20 + Math.random() * 80,
+                    width: 60 + Math.random() * 40,
+                    height: 30 + Math.random() * 20,
+                    speed: 0.2 + Math.random() * 0.3
+                });
+            }
+            return clouds;
+        }
+
+        function spawnButterfly() {
+            game.butterflies.push({
+                x: -50,
+                y: 50 + Math.random() * 100,
+                speed: 1 + Math.random() * 1.5,
+                wingPhase: Math.random() * Math.PI * 2,
+                bobPhase: Math.random() * Math.PI * 2,
+                color: ['#FF69B4', '#FFD700', '#9370DB', '#FF4500', '#32CD32'][Math.floor(Math.random() * 5)]
+            });
+        }
+
+        function spawnBee() {
+            game.bees.push({
+                x: -30,
+                y: 150 + Math.random() * 150,
+                speed: 2 + Math.random() * 1,
+                wingPhase: Math.random() * Math.PI * 2,
+                bobPhase: Math.random() * Math.PI * 2,
+                targetFlower: null,
+                flowerTime: 0
+            });
+        }
+
+        function createMountains() {
+            const mountains = [];
+            for (let i = 0; i < 8; i++) {
+                mountains.push({
+                    x: i * 200 - 100,
+                    y: 150 + Math.random() * 50,
+                    width: 300 + Math.random() * 100,
+                    height: 150 + Math.random() * 100,
+                    color: i % 2 === 0 ? '#8B7D6B' : '#A0907A'
+                });
+            }
+            return mountains;
+        }
+
+
+        function createFlowers() {
+            const flowers = [];
+            const colors = [
+                '#FF1493', '#FF69B4', '#FFB6C1', '#FFC0CB',
+                '#FF6347', '#FF4500', '#FF8C00', '#FFA500',
+                '#FFD700', '#FFFF00', '#ADFF2F', '#7FFF00',
+                '#32CD32', '#00FF00', '#90EE90', '#98FB98',
+                '#9370DB', '#8A2BE2', '#9932CC', '#BA55D3',
+                '#FF0000', '#DC143C', '#B22222', '#CD5C5C',
+                '#00BFFF', '#1E90FF', '#4169E1', '#6495ED',
+                '#FF1493', '#FFB6C1', '#DDA0DD', '#E6E6FA'
+            ];
+            
+            for (let i = 0; i < 100; i++) {
+                flowers.push({
+                    x: Math.random() * 4000,
+                    y: 340 + Math.random() * 15,
+                    color: colors[Math.floor(Math.random() * colors.length)],
+                    size: 3 + Math.random() * 2,
+                    swayPhase: Math.random() * Math.PI * 2
+                });
+            }
+            return flowers;
+        }
+
+        game.obstacles = createObstacles();
+        game.clouds = createClouds();
+        game.mountains = createMountains();
+        game.flowers = createFlowers();
+
+        function handleInput() {
+            if (game.player.stunned) {
+                game.player.velocityX = 0;
+                return;
+            }
+            
+            // Handle crouching
+            if (game.keys['ShiftRight']) {
+                if (!game.player.crouching) {
+                    game.player.crouching = true;
+                    game.player.y += game.player.originalHeight - game.player.originalHeight * 0.6; // Move down
+                    game.player.height = game.player.originalHeight * 0.6; // Reduce height
+                }
+            } else {
+                if (game.player.crouching) {
+                    game.player.crouching = false;
+                    game.player.y -= game.player.originalHeight - game.player.originalHeight * 0.6; // Move up
+                    game.player.height = game.player.originalHeight; // Restore height
+                }
+            }
+            
+            // Slower movement while crouching
+            const currentSpeed = game.player.crouching ? game.player.speed * 0.5 : game.player.speed;
+            
+            if (game.keys['ArrowRight']) {
+                game.player.velocityX = currentSpeed;
+            } else if (game.keys['ArrowLeft']) {
+                game.player.velocityX = -currentSpeed;
+            } else {
+                game.player.velocityX = 0;
+            }
+
+            if (game.keys[' '] && game.spaceReleased && !game.player.crouching) {
+                const currentTime = Date.now();
+                
+                if (currentTime - game.lastJumpTime < 300) {
+                    if (game.jumpCount === 1) {
+                        game.player.velocityY = -game.player.jumpPower * 0.7;
+                        game.jumpCount = 2;
+                    }
+                } else {
+                    if (game.player.onGround) {
+                        game.player.velocityY = -game.player.jumpPower;
+                        game.jumpCount = 1;
+                        game.lastJumpTime = currentTime;
+                    }
+                }
+                game.spaceReleased = false;
+            }
+
+            if (!game.keys[' ']) {
+                game.spaceReleased = true;
+            }
+        }
+
+        function updatePlayer() {
+            handleInput();
+            
+            if (game.player.stunned) {
+                game.player.stunTime -= 16;
+                if (game.player.stunTime <= 0) {
+                    game.player.stunned = false;
+                }
+                return;
+            }
+
+            game.player.velocityY += 0.8;
+            game.player.x += game.player.velocityX;
+            game.player.y += game.player.velocityY;
+
+            if (game.player.y >= 280) {
+                game.player.y = 280;
+                game.player.velocityY = 0;
+                game.player.onGround = true;
+                game.jumpCount = 0;
+                
+                let isOverHole = false;
+                for (let hole of game.holes) {
+                    if (game.player.x + game.player.width/2 >= hole.x &&
+                        game.player.x + game.player.width/2 <= hole.x + hole.width) {
+                        isOverHole = true;
+                        break;
+                    }
+                }
+                
+                if (!isOverHole) {
+                    game.player.lastSafeX = game.player.x;
+                    game.player.lastSafeY = game.player.y;
+                }
+            } else {
+                game.player.onGround = false;
+            }
+
+            if (game.player.x < 0) {
+                game.player.x = 0;
+            }
+
+            game.player.animFrame += 0.2;
+            
+            for (let obstacle of game.obstacles) {
+                if (obstacle.type === 'moving') {
+                    obstacle.y = obstacle.originalY + Math.sin(Date.now() * obstacle.moveSpeed) * 20;
+                }
+            }
+
+            for (let cloud of game.clouds) {
+                cloud.x += cloud.speed;
+                if (cloud.x > game.camera.x + canvas.width + 100) {
+                    cloud.x = game.camera.x - cloud.width - 100;
+                }
+            }
+
+            for (let i = game.butterflies.length - 1; i >= 0; i--) {
+                let butterfly = game.butterflies[i];
+                butterfly.x += butterfly.speed;
+                butterfly.wingPhase += 0.4;
+                butterfly.bobPhase += 0.1;
+                butterfly.y += Math.sin(butterfly.bobPhase) * 0.5;
+                
+                if (butterfly.x > game.camera.x + canvas.width + 50) {
+                    game.butterflies.splice(i, 1);
+                }
+            }
+
+            if (Math.random() < 0.0008) {
+                spawnButterfly();
+            }
+
+            for (let i = game.bees.length - 1; i >= 0; i--) {
+                let bee = game.bees[i];
+                
+                if (!bee.targetFlower || bee.flowerTime <= 0) {
+                    bee.x += bee.speed;
+                    bee.wingPhase += 0.6;
+                    bee.bobPhase += 0.15;
+                    bee.y += Math.sin(bee.bobPhase) * 0.8;
+                    
+                    const nearbyFlower = game.flowers.find(flower => 
+                        Math.abs(flower.x - bee.x) < 100 && Math.abs(flower.y - bee.y) < 80
+                    );
+                    
+                    if (nearbyFlower && Math.random() < 0.02) {
+                        bee.targetFlower = nearbyFlower;
+                        bee.flowerTime = 60 + Math.random() * 120;
+                    }
+                } else {
+                    const dx = bee.targetFlower.x - bee.x;
+                    const dy = bee.targetFlower.y - bee.y;
+                    bee.x += dx * 0.05;
+                    bee.y += dy * 0.05;
+                    bee.wingPhase += 0.8;
+                    bee.flowerTime--;
+                    
+                    if (bee.flowerTime <= 0) {
+                        bee.targetFlower = null;
+                    }
+                }
+                
+                if (bee.x > game.camera.x + canvas.width + 50) {
+                    game.bees.splice(i, 1);
+                }
+            }
+
+            if (Math.random() < 0.0005) {
+                spawnBee();
+            }
+
+            for (let flower of game.flowers) {
+                flower.swayPhase += 0.02;
+            }
+        }
+
+        function checkCollisions() {
+            if (game.player.stunned) return;
+            
+            const playerRect = {
+                x: game.player.x,
+                y: game.player.y,
+                width: game.player.width,
+                height: game.player.height
+            };
+
+            for (let obstacle of game.obstacles) {
+                const obstacleRect = {
+                    x: obstacle.x,
+                    y: obstacle.y,
+                    width: obstacle.width,
+                    height: obstacle.height
+                };
+
+                if (playerRect.x < obstacleRect.x + obstacleRect.width &&
+                    playerRect.x + playerRect.width > obstacleRect.x &&
+                    playerRect.y < obstacleRect.y + obstacleRect.height &&
+                    playerRect.y + playerRect.height > obstacleRect.y) {
+                    
+                    // Special handling for low barriers - only collide if not crouching
+                    if (obstacle.type === 'lowBarrier') {
+                        if (!game.player.crouching) {
+                            game.player.x = obstacleRect.x - game.player.width;
+                            game.player.velocityX = 0;
+                            break;
+                        }
+                        // If crouching, allow passage - no collision
+                    } else {
+                        // Normal collision for other obstacles
+                        game.player.x = obstacleRect.x - game.player.width;
+                        game.player.velocityX = 0;
+                        break;
+                    }
+                }
+            }
+            
+            for (let hole of game.holes) {
+                if (playerRect.x + playerRect.width/2 >= hole.x &&
+                    playerRect.x + playerRect.width/2 <= hole.x + hole.width &&
+                    playerRect.y + playerRect.height >= hole.y) {
+                    
+                    game.player.x = game.player.lastSafeX;
+                    game.player.y = game.player.lastSafeY;
+                    game.player.velocityX = 0;
+                    game.player.velocityY = 0;
+                    game.player.stunned = true;
+                    game.player.stunTime = 3000;
+                    break;
+                }
+            }
+        }
+
+        function updateCamera() {
+            const targetCameraX = game.player.x - 200;
+            game.camera.x = Math.max(0, targetCameraX);
+        }
+
+        function drawPlayer() {
+            ctx.save();
+            ctx.translate(-game.camera.x, 0);
+            
+            const playerColor = game.player.stunned ? '#FF69B4' : game.player.originalColor;
+            const bobOffset = game.player.crouching ? 0 : Math.sin(game.player.animFrame) * 3;
+            const armSwing = game.player.crouching ? Math.sin(game.player.animFrame * 1.5) * 2 : Math.sin(game.player.animFrame * 1.5) * 4;
+            const legSwing = game.player.crouching ? 0 : Math.sin(game.player.animFrame * 1.2) * 5;
+            const crouchOffset = game.player.crouching ? 15 : 0;
+            
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(game.player.x + 10, game.player.y + 1 + crouchOffset, 20, 12);
+            
+            ctx.fillStyle = '#FFDBAC';
+            ctx.beginPath();
+            ctx.arc(game.player.x + 20, game.player.y + 12 + crouchOffset, 10, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.fillStyle = '#FFFFFF';
+            ctx.beginPath();
+            ctx.arc(game.player.x + 16, game.player.y + 8 + bobOffset + crouchOffset, 3, 0, Math.PI * 2);
+            ctx.arc(game.player.x + 24, game.player.y + 8 + bobOffset + crouchOffset, 3, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.fillStyle = '#4169E1';
+            ctx.beginPath();
+            ctx.arc(game.player.x + 16, game.player.y + 8 + bobOffset + crouchOffset, 2, 0, Math.PI * 2);
+            ctx.arc(game.player.x + 24, game.player.y + 8 + bobOffset + crouchOffset, 2, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.fillStyle = '#000000';
+            ctx.beginPath();
+            ctx.arc(game.player.x + 16, game.player.y + 8 + bobOffset + crouchOffset, 1, 0, Math.PI * 2);
+            ctx.arc(game.player.x + 24, game.player.y + 8 + bobOffset + crouchOffset, 1, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.fillStyle = '#FF6B6B';
+            ctx.beginPath();
+            ctx.arc(game.player.x + 20, game.player.y + 14 + crouchOffset, 2, 0, Math.PI);
+            ctx.fill();
+            
+            ctx.fillStyle = '#FFDBAC';
+            ctx.beginPath();
+            ctx.arc(game.player.x + 20, game.player.y + 18 + crouchOffset, 3, Math.PI, 0);
+            ctx.fill();
+            
+            ctx.fillStyle = playerColor;
+            ctx.beginPath();
+            if (game.player.crouching) {
+                ctx.roundRect(game.player.x + 12, game.player.y + 22 + crouchOffset, 16, 18, 8);
+            } else {
+                ctx.roundRect(game.player.x + 12, game.player.y + 22, 16, 25, 8);
+            }
+            ctx.fill();
+            
+            ctx.fillStyle = '#FFDBAC';
+            ctx.beginPath();
+            ctx.arc(game.player.x + 8 + armSwing/2, game.player.y + 28 + armSwing + crouchOffset, 3, 0, Math.PI * 2);
+            ctx.arc(game.player.x + 32 - armSwing/2, game.player.y + 28 - armSwing + crouchOffset, 3, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.fillStyle = playerColor;
+            ctx.beginPath();
+            if (game.player.crouching) {
+                ctx.roundRect(game.player.x + 5 + armSwing/2, game.player.y + 25 + armSwing + crouchOffset, 6, 12, 3);
+                ctx.roundRect(game.player.x + 29 - armSwing/2, game.player.y + 25 - armSwing + crouchOffset, 6, 12, 3);
+            } else {
+                ctx.roundRect(game.player.x + 5 + armSwing/2, game.player.y + 25 + armSwing, 6, 15, 3);
+                ctx.roundRect(game.player.x + 29 - armSwing/2, game.player.y + 25 - armSwing, 6, 15, 3);
+            }
+            ctx.fill();
+            
+            ctx.fillStyle = '#8B4513';
+            ctx.beginPath();
+            if (game.player.crouching) {
+                // Legs bent when crouching
+                ctx.roundRect(game.player.x + 13, game.player.y + 40 + crouchOffset, 6, 10, 3);
+                ctx.roundRect(game.player.x + 21, game.player.y + 40 + crouchOffset, 6, 10, 3);
+            } else {
+                ctx.roundRect(game.player.x + 13, game.player.y + 47 + legSwing, 6, 13, 3);
+                ctx.roundRect(game.player.x + 21, game.player.y + 47 - legSwing, 6, 13, 3);
+            }
+            ctx.fill();
+            
+            ctx.fillStyle = '#654321';
+            ctx.beginPath();
+            if (game.player.crouching) {
+                ctx.roundRect(game.player.x + 11, game.player.y + 48 + crouchOffset, 10, 4, 2);
+                ctx.roundRect(game.player.x + 19, game.player.y + 48 + crouchOffset, 10, 4, 2);
+            } else {
+                ctx.roundRect(game.player.x + 11, game.player.y + 58 + legSwing, 10, 4, 2);
+                ctx.roundRect(game.player.x + 19, game.player.y + 58 - legSwing, 10, 4, 2);
+            }
+            ctx.fill();
+            
+            if (game.player.stunned) {
+                ctx.fillStyle = '#FF1493';
+                ctx.font = '14px Arial';
+                ctx.fillText('STUNNED!', game.player.x - 5, game.player.y - 10);
+            }
+            
+            ctx.restore();
+        }
+
+        function drawObstacles() {
+            ctx.save();
+            ctx.translate(-game.camera.x, 0);
+            
+            for (let obstacle of game.obstacles) {
+                if (obstacle.x + obstacle.width > game.camera.x && 
+                    obstacle.x < game.camera.x + canvas.width) {
+                    
+                    if (obstacle.type === 'spikes') {
+                        const gradient = ctx.createLinearGradient(0, obstacle.y, 0, obstacle.y + obstacle.height);
+                        gradient.addColorStop(0, '#C0C0C0');
+                        gradient.addColorStop(0.3, '#A0A0A0');
+                        gradient.addColorStop(1, '#808080');
+                        
+                        ctx.fillStyle = gradient;
+                        for (let i = 0; i < obstacle.width; i += 4) {
+                            ctx.beginPath();
+                            ctx.moveTo(obstacle.x + i, obstacle.y + obstacle.height);
+                            ctx.lineTo(obstacle.x + i + 2, obstacle.y);
+                            ctx.lineTo(obstacle.x + i + 4, obstacle.y + obstacle.height);
+                            ctx.closePath();
+                            ctx.fill();
+                            
+                            ctx.strokeStyle = '#666';
+                            ctx.lineWidth = 0.5;
+                            ctx.stroke();
+                        }
+                    } else if (obstacle.type === 'high') {
+                        const brickGradient = ctx.createLinearGradient(0, obstacle.y, 0, obstacle.y + obstacle.height);
+                        brickGradient.addColorStop(0, '#CD853F');
+                        brickGradient.addColorStop(0.5, '#8B4513');
+                        brickGradient.addColorStop(1, '#654321');
+                        
+                        ctx.fillStyle = brickGradient;
+                        ctx.fillRect(obstacle.x, obstacle.y, obstacle.width, obstacle.height);
+                        
+                        ctx.strokeStyle = '#4A2C2A';
+                        ctx.lineWidth = 1;
+                        for (let row = 0; row < Math.floor(obstacle.height / 15); row++) {
+                            const y = obstacle.y + row * 15;
+                            ctx.beginPath();
+                            ctx.moveTo(obstacle.x, y);
+                            ctx.lineTo(obstacle.x + obstacle.width, y);
+                            ctx.stroke();
+                            
+                            for (let col = 0; col < Math.floor(obstacle.width / 20); col++) {
+                                const x = obstacle.x + col * 20 + (row % 2) * 10;
+                                ctx.beginPath();
+                                ctx.moveTo(x, y);
+                                ctx.lineTo(x, y + 15);
+                                ctx.stroke();
+                            }
+                        }
+                    } else if (obstacle.type === 'block') {
+                        const rockGradient = ctx.createRadialGradient(
+                            obstacle.x + obstacle.width/2, obstacle.y + obstacle.height/3, 0,
+                            obstacle.x + obstacle.width/2, obstacle.y + obstacle.height/2, obstacle.width/2
+                        );
+                        rockGradient.addColorStop(0, '#A9A9A9');
+                        rockGradient.addColorStop(0.7, '#696969');
+                        rockGradient.addColorStop(1, '#2F2F2F');
+                        
+                        ctx.fillStyle = rockGradient;
+                        ctx.beginPath();
+                        ctx.moveTo(obstacle.x + 5, obstacle.y + obstacle.height);
+                        ctx.lineTo(obstacle.x + 2, obstacle.y + obstacle.height * 0.7);
+                        ctx.lineTo(obstacle.x + 8, obstacle.y + obstacle.height * 0.3);
+                        ctx.lineTo(obstacle.x + obstacle.width/2, obstacle.y);
+                        ctx.lineTo(obstacle.x + obstacle.width - 8, obstacle.y + obstacle.height * 0.3);
+                        ctx.lineTo(obstacle.x + obstacle.width - 2, obstacle.y + obstacle.height * 0.7);
+                        ctx.lineTo(obstacle.x + obstacle.width - 5, obstacle.y + obstacle.height);
+                        ctx.closePath();
+                        ctx.fill();
+                        
+                        ctx.fillStyle = 'rgba(0,0,0,0.3)';
+                        ctx.beginPath();
+                        ctx.moveTo(obstacle.x + obstacle.width/2, obstacle.y);
+                        ctx.lineTo(obstacle.x + obstacle.width - 8, obstacle.y + obstacle.height * 0.3);
+                        ctx.lineTo(obstacle.x + obstacle.width - 2, obstacle.y + obstacle.height * 0.7);
+                        ctx.lineTo(obstacle.x + obstacle.width - 5, obstacle.y + obstacle.height);
+                        ctx.lineTo(obstacle.x + obstacle.width/2, obstacle.y + obstacle.height * 0.8);
+                        ctx.closePath();
+                        ctx.fill();
+                    } else if (obstacle.type === 'lowBarrier') {
+                        // Draw wooden log barrier
+                        const logGradient = ctx.createLinearGradient(0, obstacle.y, 0, obstacle.y + obstacle.height);
+                        logGradient.addColorStop(0, '#DAA520');
+                        logGradient.addColorStop(0.3, '#B8860B');
+                        logGradient.addColorStop(0.7, '#8B6914');
+                        logGradient.addColorStop(1, '#654321');
+                        
+                        ctx.fillStyle = logGradient;
+                        ctx.fillRect(obstacle.x, obstacle.y, obstacle.width, obstacle.height);
+                        
+                        // Wood grain lines
+                        ctx.strokeStyle = 'rgba(139, 69, 19, 0.4)';
+                        ctx.lineWidth = 2;
+                        for (let i = 0; i < 3; i++) {
+                            const y = obstacle.y + obstacle.height * (0.2 + i * 0.3);
+                            ctx.beginPath();
+                            ctx.moveTo(obstacle.x, y);
+                            ctx.lineTo(obstacle.x + obstacle.width, y);
+                            ctx.stroke();
+                        }
+                        
+                        // Vertical grain
+                        ctx.lineWidth = 1;
+                        for (let i = 0; i < 4; i++) {
+                            const x = obstacle.x + obstacle.width * (0.15 + i * 0.25);
+                            ctx.beginPath();
+                            ctx.moveTo(x, obstacle.y);
+                            ctx.lineTo(x, obstacle.y + obstacle.height);
+                            ctx.stroke();
+                        }
+                        
+                        // Metal brackets on ends
+                        ctx.fillStyle = '#A9A9A9';
+                        ctx.fillRect(obstacle.x - 2, obstacle.y + obstacle.height * 0.2, 4, obstacle.height * 0.6);
+                        ctx.fillRect(obstacle.x + obstacle.width - 2, obstacle.y + obstacle.height * 0.2, 4, obstacle.height * 0.6);
+                        
+                        // Bracket screws
+                        ctx.fillStyle = '#696969';
+                        ctx.beginPath();
+                        ctx.arc(obstacle.x, obstacle.y + obstacle.height * 0.3, 1, 0, Math.PI * 2);
+                        ctx.arc(obstacle.x, obstacle.y + obstacle.height * 0.7, 1, 0, Math.PI * 2);
+                        ctx.arc(obstacle.x + obstacle.width, obstacle.y + obstacle.height * 0.3, 1, 0, Math.PI * 2);
+                        ctx.arc(obstacle.x + obstacle.width, obstacle.y + obstacle.height * 0.7, 1, 0, Math.PI * 2);
+                        ctx.fill();
+                        
+                        // Support posts
+                        ctx.fillStyle = '#8B4513';
+                        ctx.fillRect(obstacle.x + 10, obstacle.y + obstacle.height, 6, 30);
+                        ctx.fillRect(obstacle.x + obstacle.width - 16, obstacle.y + obstacle.height, 6, 30);
+                        
+                    } else if (obstacle.type === 'moving') {
+                        const crystalGradient = ctx.createLinearGradient(0, obstacle.y, 0, obstacle.y + obstacle.height);
+                        crystalGradient.addColorStop(0, '#E6E6FA');
+                        crystalGradient.addColorStop(0.3, '#9370DB');
+                        crystalGradient.addColorStop(0.7, '#8A2BE2');
+                        crystalGradient.addColorStop(1, '#4B0082');
+                        
+                        ctx.fillStyle = crystalGradient;
+                        ctx.beginPath();
+                        ctx.moveTo(obstacle.x + obstacle.width/2, obstacle.y);
+                        ctx.lineTo(obstacle.x + obstacle.width * 0.8, obstacle.y + obstacle.height * 0.3);
+                        ctx.lineTo(obstacle.x + obstacle.width, obstacle.y + obstacle.height);
+                        ctx.lineTo(obstacle.x, obstacle.y + obstacle.height);
+                        ctx.lineTo(obstacle.x + obstacle.width * 0.2, obstacle.y + obstacle.height * 0.3);
+                        ctx.closePath();
+                        ctx.fill();
+                        
+                        ctx.fillStyle = 'rgba(255,255,255,0.4)';
+                        ctx.beginPath();
+                        ctx.moveTo(obstacle.x + obstacle.width/2, obstacle.y);
+                        ctx.lineTo(obstacle.x + obstacle.width * 0.6, obstacle.y + obstacle.height * 0.2);
+                        ctx.lineTo(obstacle.x + obstacle.width * 0.4, obstacle.y + obstacle.height * 0.5);
+                        ctx.lineTo(obstacle.x + obstacle.width * 0.3, obstacle.y + obstacle.height * 0.2);
+                        ctx.closePath();
+                        ctx.fill();
+                    }
+                }
+            }
+            
+            for (let hole of game.holes) {
+                if (hole.x + hole.width > game.camera.x && 
+                    hole.x < game.camera.x + canvas.width) {
+                    
+                    const centerX = hole.x + hole.width/2;
+                    const centerY = hole.y + hole.height/2;
+                    const baseRadius = hole.width/2;
+                    
+                    // Create irregular hole shape using multiple overlapping circles
+                    if (!hole.irregularPoints) {
+                        hole.irregularPoints = [];
+                        for (let i = 0; i < 12; i++) {
+                            const angle = (i / 12) * Math.PI * 2;
+                            const radiusVariation = 0.7 + Math.random() * 0.6; // 0.7 to 1.3
+                            hole.irregularPoints.push({
+                                angle: angle,
+                                radius: baseRadius * radiusVariation
+                            });
+                        }
+                    }
+                    
+                    // Draw shadow/ground displacement around hole
+                    ctx.fillStyle = 'rgba(101, 67, 33, 0.6)';
+                    ctx.beginPath();
+                    ctx.moveTo(centerX + hole.irregularPoints[0].radius * Math.cos(hole.irregularPoints[0].angle) * 1.3, 
+                              centerY + hole.irregularPoints[0].radius * Math.sin(hole.irregularPoints[0].angle) * 1.3);
+                    for (let i = 1; i < hole.irregularPoints.length; i++) {
+                        const point = hole.irregularPoints[i];
+                        ctx.lineTo(centerX + point.radius * Math.cos(point.angle) * 1.3, 
+                                  centerY + point.radius * Math.sin(point.angle) * 1.3);
+                    }
+                    ctx.closePath();
+                    ctx.fill();
+                    
+                    // Draw rocks and debris around hole edge
+                    if (!hole.rocks) {
+                        hole.rocks = [];
+                        for (let i = 0; i < 8 + Math.random() * 6; i++) {
+                            const angle = Math.random() * Math.PI * 2;
+                            const distance = baseRadius * (1.1 + Math.random() * 0.4);
+                            hole.rocks.push({
+                                x: centerX + Math.cos(angle) * distance,
+                                y: centerY + Math.sin(angle) * distance,
+                                size: 1 + Math.random() * 3,
+                                color: Math.random() > 0.5 ? '#8B7D6B' : '#654321'
+                            });
+                        }
+                    }
+                    
+                    // Draw small rocks
+                    for (let rock of hole.rocks) {
+                        ctx.fillStyle = rock.color;
+                        ctx.beginPath();
+                        ctx.arc(rock.x, rock.y, rock.size, 0, Math.PI * 2);
+                        ctx.fill();
+                        
+                        // Rock highlight
+                        ctx.fillStyle = 'rgba(255,255,255,0.2)';
+                        ctx.beginPath();
+                        ctx.arc(rock.x - rock.size * 0.3, rock.y - rock.size * 0.3, rock.size * 0.4, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                    
+                    // Draw grass around hole edge
+                    if (!hole.grassBlades) {
+                        hole.grassBlades = [];
+                        for (let i = 0; i < 15 + Math.random() * 10; i++) {
+                            const angle = Math.random() * Math.PI * 2;
+                            const distance = baseRadius * (0.9 + Math.random() * 0.4);
+                            hole.grassBlades.push({
+                                x: centerX + Math.cos(angle) * distance,
+                                y: centerY + Math.sin(angle) * distance,
+                                height: 3 + Math.random() * 4,
+                                lean: (Math.random() - 0.5) * 0.5,
+                                color: ['#228B22', '#32CD32', '#2E8B57'][Math.floor(Math.random() * 3)]
+                            });
+                        }
+                    }
+                    
+                    // Draw grass blades
+                    for (let grass of hole.grassBlades) {
+                        ctx.strokeStyle = grass.color;
+                        ctx.lineWidth = 1;
+                        ctx.beginPath();
+                        ctx.moveTo(grass.x, grass.y + 5);
+                        ctx.quadraticCurveTo(grass.x + grass.lean * grass.height, grass.y + 2, 
+                                           grass.x + grass.lean * grass.height, grass.y - grass.height);
+                        ctx.stroke();
+                    }
+                    
+                    // Draw depth layers
+                    const depthLayers = [
+                        { depth: 0.0, color: '#4A2C17', alpha: 0.9 },
+                        { depth: 0.15, color: '#3A1F0F', alpha: 0.95 },
+                        { depth: 0.35, color: '#2A1509', alpha: 0.98 },
+                        { depth: 0.6, color: '#1A0A04', alpha: 1.0 },
+                        { depth: 0.85, color: '#000000', alpha: 1.0 }
+                    ];
+                    
+                    for (let layer of depthLayers) {
+                        const layerGradient = ctx.createRadialGradient(
+                            centerX, centerY - layer.depth * 5, 0,
+                            centerX, centerY - layer.depth * 5, baseRadius * (1.0 - layer.depth * 0.3)
+                        );
+                        layerGradient.addColorStop(0, layer.color);
+                        layerGradient.addColorStop(0.6, layer.color);
+                        layerGradient.addColorStop(1, 'rgba(0,0,0,0)');
+                        
+                        ctx.save();
+                        ctx.globalAlpha = layer.alpha;
+                        ctx.fillStyle = layerGradient;
+                        ctx.beginPath();
+                        ctx.moveTo(centerX + hole.irregularPoints[0].radius * (1.0 - layer.depth * 0.3) * Math.cos(hole.irregularPoints[0].angle), 
+                                  centerY + hole.irregularPoints[0].radius * (1.0 - layer.depth * 0.3) * Math.sin(hole.irregularPoints[0].angle));
+                        for (let i = 1; i < hole.irregularPoints.length; i++) {
+                            const point = hole.irregularPoints[i];
+                            const layerRadius = point.radius * (1.0 - layer.depth * 0.3);
+                            ctx.lineTo(centerX + layerRadius * Math.cos(point.angle), 
+                                      centerY + layerRadius * Math.sin(point.angle));
+                        }
+                        ctx.closePath();
+                        ctx.fill();
+                        ctx.restore();
+                    }
+                    
+                    // Add some moisture/dampness effect at the bottom
+                    ctx.save();
+                    ctx.globalAlpha = 0.3;
+                    const moistureGradient = ctx.createRadialGradient(
+                        centerX, centerY + baseRadius * 0.3, 0,
+                        centerX, centerY + baseRadius * 0.3, baseRadius * 0.4
+                    );
+                    moistureGradient.addColorStop(0, '#001122');
+                    moistureGradient.addColorStop(1, 'rgba(0,0,0,0)');
+                    ctx.fillStyle = moistureGradient;
+                    ctx.beginPath();
+                    ctx.arc(centerX, centerY + baseRadius * 0.3, baseRadius * 0.4, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.restore();
+                }
+            }
+            
+            ctx.restore();
+        }
+
+        function drawGround() {
+            ctx.save();
+            ctx.translate(-game.camera.x, 0);
+            
+            const groundGradient = ctx.createLinearGradient(0, 340, 0, 400);
+            groundGradient.addColorStop(0, '#32CD32');
+            groundGradient.addColorStop(0.2, '#228B22');
+            groundGradient.addColorStop(0.6, '#1E7B1E');
+            groundGradient.addColorStop(1, '#0F5F0F');
+            
+            ctx.fillStyle = groundGradient;
+            ctx.fillRect(-200, 340, canvas.width + game.camera.x + 400, 60);
+            
+            for (let i = 0; i < 200; i++) {
+                const x = -200 + i * 20 + (game.camera.x * 0.1);
+                const grassHeight = 3 + Math.sin(i * 0.5) * 2;
+                const grassColor = i % 3 === 0 ? '#228B22' : i % 3 === 1 ? '#32CD32' : '#2E8B57';
+                
+                if (x > game.camera.x - 50 && x < game.camera.x + canvas.width + 50) {
+                    ctx.fillStyle = grassColor;
+                    ctx.fillRect(x, 340 - grassHeight, 1, grassHeight);
+                    ctx.fillRect(x + 2, 340 - grassHeight + 1, 1, grassHeight - 1);
+                    ctx.fillRect(x + 4, 340 - grassHeight + 0.5, 1, grassHeight - 0.5);
+                }
+            }
+            
+            ctx.restore();
+        }
+
+        function drawFlowers() {
+            ctx.save();
+            ctx.translate(-game.camera.x, 0);
+            
+            for (let flower of game.flowers) {
+                if (flower.x > game.camera.x - 20 && flower.x < game.camera.x + canvas.width + 20) {
+                    const swayOffset = Math.sin(flower.swayPhase) * 2;
+                    
+                    ctx.strokeStyle = '#228B22';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.moveTo(flower.x, flower.y + 10);
+                    ctx.quadraticCurveTo(flower.x + swayOffset/2, flower.y + 6, flower.x + swayOffset, flower.y);
+                    ctx.stroke();
+                    
+                    const gradient = ctx.createRadialGradient(
+                        flower.x + swayOffset, flower.y, 0,
+                        flower.x + swayOffset, flower.y, flower.size * 0.8
+                    );
+                    gradient.addColorStop(0, flower.color);
+                    gradient.addColorStop(0.7, flower.color);
+                    gradient.addColorStop(1, 'rgba(0,0,0,0.1)');
+                    
+                    ctx.fillStyle = gradient;
+                    ctx.save();
+                    ctx.translate(flower.x + swayOffset, flower.y);
+                    
+                    for (let i = 0; i < 5; i++) {
+                        const angle = (i / 5) * Math.PI * 2 + flower.swayPhase * 0.1;
+                        ctx.save();
+                        ctx.rotate(angle);
+                        
+                        ctx.beginPath();
+                        ctx.ellipse(0, -flower.size * 0.7, flower.size * 0.4, flower.size * 0.8, 0, 0, Math.PI * 2);
+                        ctx.fill();
+                        
+                        const petalGradient = ctx.createRadialGradient(0, -flower.size * 0.4, 0, 0, -flower.size * 0.4, flower.size * 0.3);
+                        petalGradient.addColorStop(0, 'rgba(255,255,255,0.3)');
+                        petalGradient.addColorStop(1, 'rgba(255,255,255,0)');
+                        ctx.fillStyle = petalGradient;
+                        ctx.fill();
+                        
+                        ctx.restore();
+                    }
+                    
+                    ctx.fillStyle = '#FFD700';
+                    ctx.beginPath();
+                    ctx.arc(0, 0, flower.size * 0.3, 0, Math.PI * 2);
+                    ctx.fill();
+                    
+                    ctx.fillStyle = '#FFA500';
+                    for (let i = 0; i < 8; i++) {
+                        const angle = (i / 8) * Math.PI * 2;
+                        const dotX = Math.cos(angle) * flower.size * 0.15;
+                        const dotY = Math.sin(angle) * flower.size * 0.15;
+                        ctx.beginPath();
+                        ctx.arc(dotX, dotY, 0.5, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                    
+                    ctx.fillStyle = '#228B22';
+                    ctx.save();
+                    ctx.rotate(-Math.PI/4 + swayOffset * 0.1);
+                    ctx.beginPath();
+                    ctx.ellipse(-flower.size * 0.5, -flower.size * 0.3, flower.size * 0.2, flower.size * 0.4, 0, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.restore();
+                    
+                    ctx.save();
+                    ctx.rotate(Math.PI/4 + swayOffset * 0.1);
+                    ctx.beginPath();
+                    ctx.ellipse(flower.size * 0.6, -flower.size * 0.2, flower.size * 0.15, flower.size * 0.3, 0, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.restore();
+                    
+                    ctx.restore();
+                }
+            }
+            
+            ctx.restore();
+        }
+
+        function drawSky() {
+            const sunX = 700;
+            const sunY = 60;
+            
+            const gradient = ctx.createRadialGradient(sunX, sunY, 10, sunX, sunY, 50);
+            gradient.addColorStop(0, '#FFFF99');
+            gradient.addColorStop(0.3, '#FFD700');
+            gradient.addColorStop(0.7, '#FFA500');
+            gradient.addColorStop(1, 'rgba(255,165,0,0.3)');
+            
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.arc(sunX, sunY, 50, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.fillStyle = '#FFFF99';
+            ctx.beginPath();
+            ctx.arc(sunX, sunY, 25, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.strokeStyle = '#FFD700';
+            ctx.lineWidth = 2;
+            for (let i = 0; i < 16; i++) {
+                const angle = (i / 16) * Math.PI * 2;
+                const startX = sunX + Math.cos(angle) * 35;
+                const startY = sunY + Math.sin(angle) * 35;
+                const endX = sunX + Math.cos(angle) * 55;
+                const endY = sunY + Math.sin(angle) * 55;
+                
+                ctx.beginPath();
+                ctx.moveTo(startX, startY);
+                ctx.lineTo(endX, endY);
+                ctx.stroke();
+            }
+        }
+
+        function drawMountains() {
+            for (let mountain of game.mountains) {
+                if (mountain.x + mountain.width > -100 && 
+                    mountain.x < canvas.width + 100) {
+                    
+                    const gradient = ctx.createLinearGradient(0, mountain.y, 0, canvas.height);
+                    gradient.addColorStop(0, mountain.color);
+                    gradient.addColorStop(0.4, mountain.color);
+                    gradient.addColorStop(1, '#5D4E37');
+                    
+                    ctx.fillStyle = gradient;
+                    ctx.beginPath();
+                    ctx.moveTo(mountain.x, canvas.height);
+                    
+                    if (!mountain.peakX) {
+                        mountain.peakX = mountain.x + mountain.width/2 + (Math.random() - 0.5) * 40;
+                    }
+                    const peakX = mountain.peakX;
+                    
+                    ctx.lineTo(mountain.x + mountain.width * 0.2, mountain.y + mountain.height * 0.3);
+                    ctx.lineTo(mountain.x + mountain.width * 0.4, mountain.y + mountain.height * 0.1);
+                    ctx.lineTo(peakX, mountain.y);
+                    ctx.lineTo(mountain.x + mountain.width * 0.6, mountain.y + mountain.height * 0.15);
+                    ctx.lineTo(mountain.x + mountain.width * 0.8, mountain.y + mountain.height * 0.4);
+                    ctx.lineTo(mountain.x + mountain.width, canvas.height);
+                    ctx.closePath();
+                    ctx.fill();
+                    
+                    ctx.fillStyle = 'rgba(255,255,255,0.8)';
+                    ctx.beginPath();
+                    ctx.moveTo(peakX - 25, mountain.y + 15);
+                    ctx.lineTo(peakX, mountain.y);
+                    ctx.lineTo(peakX + 20, mountain.y + 12);
+                    ctx.lineTo(peakX + 15, mountain.y + 25);
+                    ctx.lineTo(peakX - 20, mountain.y + 30);
+                    ctx.closePath();
+                    ctx.fill();
+                    
+                    ctx.fillStyle = 'rgba(0,0,0,0.2)';
+                    ctx.beginPath();
+                    ctx.moveTo(peakX, mountain.y);
+                    ctx.lineTo(mountain.x + mountain.width * 0.6, mountain.y + mountain.height * 0.15);
+                    ctx.lineTo(mountain.x + mountain.width * 0.8, mountain.y + mountain.height * 0.4);
+                    ctx.lineTo(mountain.x + mountain.width, canvas.height);
+                    ctx.lineTo(peakX + 20, mountain.y + 12);
+                    ctx.closePath();
+                    ctx.fill();
+                }
+            }
+        }
+
+
+        function drawClouds() {
+            ctx.save();
+            ctx.translate(-game.camera.x * 0.3, 0);
+            
+            for (let cloud of game.clouds) {
+                if (cloud.x + cloud.width > game.camera.x * 0.3 && 
+                    cloud.x < game.camera.x * 0.3 + canvas.width) {
+                    
+                    const gradient = ctx.createRadialGradient(
+                        cloud.x + cloud.width/2, cloud.y, 0,
+                        cloud.x + cloud.width/2, cloud.y + 10, cloud.width/2
+                    );
+                    gradient.addColorStop(0, '#FFFFFF');
+                    gradient.addColorStop(0.7, '#F0F8FF');
+                    gradient.addColorStop(1, '#E0E6E8');
+                    
+                    ctx.fillStyle = gradient;
+                    ctx.beginPath();
+                    
+                    const bubbles = [
+                        {x: cloud.x + cloud.width * 0.1, y: cloud.y + 5, r: cloud.height/3},
+                        {x: cloud.x + cloud.width * 0.25, y: cloud.y - 2, r: cloud.height/2.2},
+                        {x: cloud.x + cloud.width * 0.45, y: cloud.y - 5, r: cloud.height/1.8},
+                        {x: cloud.x + cloud.width * 0.6, y: cloud.y - 3, r: cloud.height/2.1},
+                        {x: cloud.x + cloud.width * 0.75, y: cloud.y + 2, r: cloud.height/2.5},
+                        {x: cloud.x + cloud.width * 0.9, y: cloud.y + 8, r: cloud.height/3.2}
+                    ];
+                    
+                    for (let bubble of bubbles) {
+                        ctx.arc(bubble.x, bubble.y, bubble.r, 0, Math.PI * 2);
+                    }
+                    ctx.fill();
+                    
+                    ctx.fillStyle = 'rgba(200,220,230,0.3)';
+                    ctx.beginPath();
+                    for (let i = 2; i < bubbles.length; i++) {
+                        let bubble = bubbles[i];
+                        ctx.arc(bubble.x + 3, bubble.y + 5, bubble.r * 0.7, 0, Math.PI * 2);
+                    }
+                    ctx.fill();
+                }
+            }
+            
+            ctx.restore();
+        }
+
+        function drawButterflies() {
+            ctx.save();
+            ctx.translate(-game.camera.x, 0);
+            
+            for (let butterfly of game.butterflies) {
+                if (butterfly.x > game.camera.x - 50 && butterfly.x < game.camera.x + canvas.width + 50) {
+                    const wingFlap = Math.abs(Math.sin(butterfly.wingPhase)) * 0.8 + 0.2;
+                    const wingRotation = Math.sin(butterfly.wingPhase) * 0.3;
+                    
+                    ctx.save();
+                    ctx.translate(butterfly.x, butterfly.y);
+                    
+                    ctx.fillStyle = butterfly.color;
+                    ctx.globalAlpha = 0.8;
+                    
+                    ctx.save();
+                    ctx.scale(wingFlap, 1);
+                    ctx.rotate(-wingRotation);
+                    ctx.beginPath();
+                    ctx.arc(-6, -4, 4, 0, Math.PI * 2);
+                    ctx.arc(-8, -1, 3, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.restore();
+                    
+                    ctx.save();
+                    ctx.scale(wingFlap, 1);
+                    ctx.rotate(wingRotation);
+                    ctx.beginPath();
+                    ctx.arc(6, -4, 4, 0, Math.PI * 2);
+                    ctx.arc(8, -1, 3, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.restore();
+                    
+                    ctx.save();
+                    ctx.scale(wingFlap, 1);
+                    ctx.rotate(-wingRotation * 0.7);
+                    ctx.fillStyle = '#FFB6C1';
+                    ctx.beginPath();
+                    ctx.arc(-5, 1, 3, 0, Math.PI * 2);
+                    ctx.arc(-7, 3, 2, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.restore();
+                    
+                    ctx.save();
+                    ctx.scale(wingFlap, 1);
+                    ctx.rotate(wingRotation * 0.7);
+                    ctx.fillStyle = '#FFB6C1';
+                    ctx.beginPath();
+                    ctx.arc(5, 1, 3, 0, Math.PI * 2);
+                    ctx.arc(7, 3, 2, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.restore();
+                    
+                    ctx.globalAlpha = 1;
+                    ctx.fillStyle = '#654321';
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 1, 0, Math.PI * 2);
+                    ctx.fill();
+                    
+                    ctx.strokeStyle = '#8B4513';
+                    ctx.lineWidth = 1;
+                    ctx.beginPath();
+                    ctx.moveTo(0, -2);
+                    ctx.lineTo(0, 2);
+                    ctx.stroke();
+                    
+                    ctx.fillStyle = '#000000';
+                    ctx.beginPath();
+                    ctx.arc(-1, -5, 0.5, 0, Math.PI * 2);
+                    ctx.arc(1, -5, 0.5, 0, Math.PI * 2);
+                    ctx.fill();
+                    
+                    ctx.restore();
+                }
+            }
+            
+            ctx.restore();
+        }
+
+        function drawBees() {
+            ctx.save();
+            ctx.translate(-game.camera.x, 0);
+            
+            for (let bee of game.bees) {
+                if (bee.x > game.camera.x - 50 && bee.x < game.camera.x + canvas.width + 50) {
+                    const wingFlap = Math.abs(Math.sin(bee.wingPhase)) * 0.5 + 0.5;
+                    
+                    ctx.save();
+                    ctx.translate(bee.x, bee.y);
+                    
+                    ctx.fillStyle = '#FFD700';
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 3, 0, Math.PI * 2);
+                    ctx.fill();
+                    
+                    ctx.fillStyle = '#000000';
+                    ctx.fillRect(-1, -2, 2, 1);
+                    ctx.fillRect(-1, 0, 2, 1);
+                    ctx.fillRect(-1, 2, 2, 1);
+                    
+                    ctx.globalAlpha = 0.6;
+                    ctx.fillStyle = '#FFFFFF';
+                    ctx.save();
+                    ctx.scale(1, wingFlap);
+                    ctx.beginPath();
+                    ctx.arc(-4, -2, 2, 0, Math.PI * 2);
+                    ctx.arc(4, -2, 2, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.restore();
+                    
+                    ctx.globalAlpha = 1;
+                    ctx.fillStyle = '#000000';
+                    ctx.beginPath();
+                    ctx.arc(-1, -4, 0.5, 0, Math.PI * 2);
+                    ctx.arc(1, -4, 0.5, 0, Math.PI * 2);
+                    ctx.fill();
+                    
+                    ctx.strokeStyle = '#8B4513';
+                    ctx.lineWidth = 1;
+                    ctx.beginPath();
+                    ctx.moveTo(-2, -4);
+                    ctx.lineTo(-3, -5);
+                    ctx.moveTo(2, -4);
+                    ctx.lineTo(3, -5);
+                    ctx.stroke();
+                    
+                    if (bee.targetFlower) {
+                        ctx.strokeStyle = 'rgba(255, 215, 0, 0.3)';
+                        ctx.lineWidth = 1;
+                        ctx.setLineDash([2, 2]);
+                        ctx.beginPath();
+                        ctx.moveTo(0, 0);
+                        ctx.lineTo(bee.targetFlower.x - bee.x, bee.targetFlower.y - bee.y);
+                        ctx.stroke();
+                        ctx.setLineDash([]);
+                    }
+                    
+                    ctx.restore();
+                }
+            }
+            
+            ctx.restore();
+        }
+
+        function drawSkyGradient() {
+            const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+            gradient.addColorStop(0, '#87CEEB');
+            gradient.addColorStop(0.3, '#98D8E8');
+            gradient.addColorStop(0.7, '#B0E0E6');
+            gradient.addColorStop(1, '#E0F6FF');
+            
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+
+        function draw() {
+            drawSkyGradient();
+            
+            drawSky();
+            drawMountains();
+            drawClouds();
+            drawButterflies();
+            drawBees();
+            drawGround();
+            drawFlowers();
+            drawObstacles();
+            drawPlayer();
+            
+            ctx.fillStyle = '#333';
+            ctx.font = '16px Arial';
+            ctx.fillText(`Pozycja: ${Math.floor(game.player.x)}`, 10, 30);
+        }
+
+        function gameLoop() {
+            updatePlayer();
+            updateCamera();
+            checkCollisions();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        document.addEventListener('keydown', (e) => {
+            game.keys[e.key] = true;
+            game.keys[e.code] = true; // Also store by key code
+        });
+
+        document.addEventListener('keyup', (e) => {
+            game.keys[e.key] = false;
+            game.keys[e.code] = false; // Also clear by key code
+        });
+
+        gameLoop();
+    </script>
+</body>
+</html>
