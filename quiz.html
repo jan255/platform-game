@@ -84,6 +84,12 @@
             box-shadow: 0 5px 15px rgba(255, 232, 31, 0.4);
         }
 
+        .category-screen {
+            display: none;
+            text-align: center;
+            animation: fadeIn 0.5s;
+        }
+
         .question-container {
             display: none;
             animation: fadeIn 0.5s;
@@ -227,8 +233,14 @@
         <button id="startBtn">ROZPOCZNIJ QUIZ</button>
     </div>
 
-    <div class="question-container" id="questionContainer">
+    <div class="category-screen" id="categoryScreen">
+        <h2 style="font-size: 2.5em; margin-bottom: 30px; color: #fff;">Wybierz kategorię:</h2>
         <div class="category-badge" id="categoryBadge"></div>
+        <div class="emoji" style="font-size: 4em; margin: 20px 0;">🎯</div>
+        <button id="startCategoryBtn">ROZPOCZNIJ KATEGORIĘ</button>
+    </div>
+
+    <div class="question-container" id="questionContainer">
         <div class="question-number" id="questionNumber"></div>
         <div class="question" id="question"></div>
         <div class="options" id="options"></div>
@@ -414,6 +426,8 @@
 
     let allQuestions = [];
     let currentQuestionIndex = 0;
+    let currentCategoryIndex = 0;
+    let currentCategoryQuestions = [];
 
     function createStars() {
         const starsContainer = document.getElementById('stars');
@@ -429,29 +443,42 @@
     }
 
     function startQuiz() {
-        allQuestions = [];
-        questions.forEach(cat => {
-            cat.questions.forEach(q => {
-                allQuestions.push({
-                    category: cat.category,
-                    q: q.q,
-                    options: q.options,
-                    answer: q.answer
-                });
-            });
-        });
-
+        currentCategoryIndex = 0;
         currentQuestionIndex = 0;
         document.getElementById('titleScreen').style.display = 'none';
+        showCategoryScreen();
+    }
+
+    function showCategoryScreen() {
+        if (currentCategoryIndex >= questions.length) {
+            showFinish();
+            return;
+        }
+
+        const category = questions[currentCategoryIndex];
+        document.getElementById('categoryBadge').textContent = category.category;
+        document.getElementById('categoryScreen').style.display = 'block';
+        document.getElementById('questionContainer').style.display = 'none';
+    }
+
+    function startCategory() {
+        currentCategoryQuestions = questions[currentCategoryIndex].questions.map(q => ({
+            category: questions[currentCategoryIndex].category,
+            q: q.q,
+            options: q.options,
+            answer: q.answer
+        }));
+
+        currentQuestionIndex = 0;
+        document.getElementById('categoryScreen').style.display = 'none';
         document.getElementById('questionContainer').style.display = 'block';
         showQuestion();
     }
 
     function showQuestion() {
-        const current = allQuestions[currentQuestionIndex];
+        const current = currentCategoryQuestions[currentQuestionIndex];
 
-        document.getElementById('categoryBadge').textContent = current.category;
-        document.getElementById('questionNumber').textContent = 'Pytanie ' + (currentQuestionIndex + 1) + ' z ' + allQuestions.length;
+        document.getElementById('questionNumber').textContent = 'Pytanie ' + (currentQuestionIndex + 1) + ' z ' + currentCategoryQuestions.length;
         document.getElementById('question').textContent = current.q;
 
         const optionsContainer = document.getElementById('options');
@@ -476,11 +503,11 @@
         // Pokaż przycisk NASTĘPNE
         document.getElementById('nextBtn').style.display = 'inline-block';
 
-        document.getElementById('progress').textContent = 'Postęp: ' + (currentQuestionIndex + 1) + '/' + allQuestions.length;
+        document.getElementById('progress').textContent = 'Postęp: ' + (currentQuestionIndex + 1) + '/' + currentCategoryQuestions.length;
     }
 
     function showAnswer() {
-        const current = allQuestions[currentQuestionIndex];
+        const current = currentCategoryQuestions[currentQuestionIndex];
         document.getElementById('answerText').textContent = current.answer;
         document.getElementById('answerSection').style.display = 'block';
         document.getElementById('showAnswerBtn').style.display = 'none';
@@ -495,20 +522,24 @@
 
     function nextQuestion() {
         currentQuestionIndex++;
-        if (currentQuestionIndex < allQuestions.length) {
+        if (currentQuestionIndex < currentCategoryQuestions.length) {
             showQuestion();
         } else {
-            showFinish();
+            // Przejdź do następnej kategorii
+            currentCategoryIndex++;
+            showCategoryScreen();
         }
     }
 
     function showFinish() {
         document.getElementById('questionContainer').style.display = 'none';
+        document.getElementById('categoryScreen').style.display = 'none';
         document.getElementById('finishScreen').style.display = 'block';
     }
 
     function restartQuiz() {
         currentQuestionIndex = 0;
+        currentCategoryIndex = 0;
         document.getElementById('finishScreen').style.display = 'none';
         document.getElementById('titleScreen').style.display = 'block';
     }
@@ -516,6 +547,7 @@
     createStars();
 
     document.getElementById('startBtn').addEventListener('click', startQuiz);
+    document.getElementById('startCategoryBtn').addEventListener('click', startCategory);
     document.getElementById('showAnswerBtn').addEventListener('click', showAnswer);
     document.getElementById('prevBtn').addEventListener('click', prevQuestion);
     document.getElementById('nextBtn').addEventListener('click', nextQuestion);
