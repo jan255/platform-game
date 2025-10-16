@@ -26,10 +26,63 @@
             transform: translateX(-50%);
             text-align: center;
             color: #333;
+            display: none;
+        }
+        #menu {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 40px 60px;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        }
+        #menu h1 {
+            font-size: 48px;
+            margin: 0 0 20px 0;
+            color: #4169E1;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
+        }
+        #menu p {
+            font-size: 18px;
+            color: #666;
+            margin-bottom: 30px;
+        }
+        #playButton {
+            font-size: 24px;
+            padding: 15px 50px;
+            background: linear-gradient(to bottom, #4169E1, #1E4DB7);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: bold;
+            box-shadow: 0 5px 15px rgba(65, 105, 225, 0.4);
+            transition: all 0.3s ease;
+        }
+        #playButton:hover {
+            background: linear-gradient(to bottom, #5179F1, #2E5DC7);
+            transform: translateY(-2px);
+            box-shadow: 0 7px 20px rgba(65, 105, 225, 0.6);
+        }
+        #playButton:active {
+            transform: translateY(0);
+            box-shadow: 0 3px 10px rgba(65, 105, 225, 0.4);
+        }
+        .hidden {
+            display: none !important;
         }
     </style>
 </head>
 <body>
+    <div id="menu">
+        <h1>Gra Platformowa</h1>
+        <p>Sterowanie: ← → - ruch, SPACJA - skok, PRAWY SHIFT - kucanie</p>
+        <p>UWAŻAJ NA DZIURY!</p>
+        <button id="playButton">GRAJ</button>
+    </div>
     <div class="controls">
         <h3>Sterowanie:</h3>
         <p>← → - ruch w lewo/prawo, SPACJA - skok, 2x SPACJA - wysoki skok</p>
@@ -71,6 +124,8 @@
             bees: [],
             mountains: [],
             flowers: [],
+            portal: null,
+            spiders: [],
             camera: {
                 x: 0
             },
@@ -78,48 +133,74 @@
             spacePressed: false,
             spaceReleased: true,
             jumpCount: 0,
-            lastJumpTime: 0
+            lastJumpTime: 0,
+            started: false,
+            lives: 3,
+            level: 1,
+            portalAnimationPhase: 0
         };
 
         function createObstacles() {
             const obstacles = [];
             const holes = [];
-            
-            for (let i = 0; i < 25; i++) {
-                const x = 300 + i * 180 + Math.random() * 50;
+
+            // Difficulty scaling by level
+            const levelConfig = {
+                1: { count: 25, spacing: 180, holeChance: 0.85, highChance: 0.75, barrierChance: 0.6, spikeChance: 0.5 },
+                2: { count: 35, spacing: 150, holeChance: 0.82, highChance: 0.72, barrierChance: 0.58, spikeChance: 0.48 },
+                3: { count: 45, spacing: 130, holeChance: 0.80, highChance: 0.70, barrierChance: 0.56, spikeChance: 0.46 },
+                4: { count: 55, spacing: 110, holeChance: 0.78, highChance: 0.68, barrierChance: 0.54, spikeChance: 0.44 }
+            };
+
+            const config = levelConfig[game.level] || levelConfig[4];
+            const obstacleCount = config.count;
+
+            for (let i = 0; i < obstacleCount; i++) {
+                const x = 300 + i * config.spacing + Math.random() * 50;
                 const rand = Math.random();
-                
-                if (rand > 0.85) {
+
+                const holeChance = config.holeChance;
+                const highChance = config.highChance;
+                const barrierChance = config.barrierChance;
+                const spikeChance = config.spikeChance;
+
+                if (rand > holeChance) {
+                    const holeWidth = 60 + (game.level - 1) * 5; // Wider holes on higher levels
                     holes.push({
                         x: x,
                         y: 340,
-                        width: 60,
+                        width: holeWidth,
                         height: 60,
                         type: 'hole'
                     });
-                } else if (rand > 0.75) {
+                } else if (rand > highChance) {
+                    const wallHeight = 90 + (game.level - 1) * 5; // Taller walls
                     obstacles.push({
                         x: x,
-                        y: 250,
+                        y: 340 - wallHeight,
                         width: 30,
-                        height: 90,
+                        height: wallHeight,
                         type: 'high',
                         color: '#8B0000'
                     });
-                } else if (rand > 0.6) {
+                } else if (rand > barrierChance) {
+                    // Lower barriers should be high enough to crouch under
+                    // Player when crouching is at y=304 with height=36 (60*0.6)
+                    // So barrier bottom should be at least at y=304 or higher
                     obstacles.push({
                         x: x,
-                        y: 240,
+                        y: 260,  // Raised from 240 to 260
                         width: 80,
-                        height: 75,
+                        height: 55,  // Reduced from 75 to 55
                         type: 'lowBarrier',
                         color: '#B8860B'
                     });
-                } else if (rand > 0.5) {
+                } else if (rand > spikeChance) {
+                    const spikeWidth = 25 + (game.level - 1) * 5; // Wider spikes
                     obstacles.push({
                         x: x,
                         y: 310,
-                        width: 25,
+                        width: spikeWidth,
                         height: 30,
                         type: 'spikes',
                         color: '#FF4500'
@@ -134,6 +215,7 @@
                         color: '#654321'
                     });
                 } else {
+                    const moveSpeed = 0.05 + (game.level - 1) * 0.015; // Faster moving obstacles
                     obstacles.push({
                         x: x,
                         y: 290,
@@ -142,11 +224,47 @@
                         type: 'moving',
                         color: '#9932CC',
                         originalY: 290,
-                        moveSpeed: 0.05
+                        moveSpeed: moveSpeed
                     });
                 }
             }
             game.holes = holes;
+
+            // Create spiders on level 3+ (new trap!)
+            if (game.level >= 3) {
+                const spiders = [];
+                const spiderCount = game.level === 3 ? 6 : 10;
+
+                for (let i = 0; i < spiderCount; i++) {
+                    const spiderX = 700 + i * 500 + Math.random() * 150;
+                    const dropHeight = 100 + Math.random() * 80;
+                    spiders.push({
+                        x: spiderX,
+                        y: 50,
+                        targetY: 50,
+                        width: 25,
+                        height: 25,
+                        maxDrop: dropHeight,
+                        speed: 1.5 + (game.level - 3) * 0.5,
+                        state: 'waiting', // waiting, dropping, rising
+                        webLength: 0,
+                        waitTime: Math.random() * 100
+                    });
+                }
+                game.spiders = spiders;
+            } else {
+                game.spiders = [];
+            }
+
+            // Create portal at the end
+            const lastObstacleX = Math.max(...obstacles.map(o => o.x), ...holes.map(h => h.x));
+            game.portal = {
+                x: lastObstacleX + 300,
+                y: 240,
+                width: 60,
+                height: 100
+            };
+
             return obstacles;
         }
 
@@ -225,6 +343,39 @@
                 });
             }
             return flowers;
+        }
+
+        function resetLevel() {
+            // Reset player position
+            game.player.x = 50;
+            game.player.y = 280;
+            game.player.velocityX = 0;
+            game.player.velocityY = 0;
+            game.player.onGround = false;
+            game.player.stunned = false;
+            game.player.stunTime = 0;
+            game.player.crouching = false;
+            game.player.height = game.player.originalHeight;
+            game.player.lastSafeX = 50;
+            game.player.lastSafeY = 280;
+
+            // Reset camera
+            game.camera.x = 0;
+
+            // Reset lives to full
+            game.lives = 3;
+
+            // Reset keys
+            game.keys = {};
+            game.jumpCount = 0;
+
+            // Regenerate obstacles for current level
+            game.obstacles = createObstacles();
+            game.clouds = createClouds();
+            game.mountains = createMountains();
+            game.flowers = createFlowers();
+            game.butterflies = [];
+            game.bees = [];
         }
 
         game.obstacles = createObstacles();
@@ -402,6 +553,42 @@
             for (let flower of game.flowers) {
                 flower.swayPhase += 0.02;
             }
+
+            // Update spiders
+            for (let spider of game.spiders) {
+                if (spider.state === 'waiting') {
+                    spider.waitTime--;
+                    if (spider.waitTime <= 0) {
+                        // Check if player is nearby
+                        const distanceToPlayer = Math.abs(game.player.x - spider.x);
+                        if (distanceToPlayer < 200) {
+                            spider.state = 'dropping';
+                        } else {
+                            spider.waitTime = 60;
+                        }
+                    }
+                } else if (spider.state === 'dropping') {
+                    spider.y += spider.speed;
+                    spider.webLength = spider.y - 50;
+
+                    if (spider.y >= 50 + spider.maxDrop) {
+                        spider.state = 'rising';
+                    }
+                } else if (spider.state === 'rising') {
+                    spider.y -= spider.speed * 0.7;
+                    spider.webLength = spider.y - 50;
+
+                    if (spider.y <= 50) {
+                        spider.y = 50;
+                        spider.state = 'waiting';
+                        spider.waitTime = 120 + Math.random() * 60;
+                        spider.webLength = 0;
+                    }
+                }
+            }
+
+            // Update portal animation
+            game.portalAnimationPhase += 0.05;
         }
 
         function checkCollisions() {
@@ -448,14 +635,81 @@
                 if (playerRect.x + playerRect.width/2 >= hole.x &&
                     playerRect.x + playerRect.width/2 <= hole.x + hole.width &&
                     playerRect.y + playerRect.height >= hole.y) {
-                    
-                    game.player.x = game.player.lastSafeX;
-                    game.player.y = game.player.lastSafeY;
-                    game.player.velocityX = 0;
-                    game.player.velocityY = 0;
-                    game.player.stunned = true;
-                    game.player.stunTime = 3000;
+
+                    game.lives--;
+
+                    if (game.lives <= 0) {
+                        // Reset current level only (not entire game)
+                        resetLevel();
+                    } else {
+                        // Lose life but continue
+                        game.player.x = game.player.lastSafeX;
+                        game.player.y = game.player.lastSafeY;
+                        game.player.velocityX = 0;
+                        game.player.velocityY = 0;
+                        game.player.stunned = true;
+                        game.player.stunTime = 3000;
+                    }
                     break;
+                }
+            }
+
+            // Check spider collision
+            for (let spider of game.spiders) {
+                const spiderRect = {
+                    x: spider.x - spider.width/2,
+                    y: spider.y - spider.height/2,
+                    width: spider.width,
+                    height: spider.height
+                };
+
+                if (playerRect.x < spiderRect.x + spiderRect.width &&
+                    playerRect.x + playerRect.width > spiderRect.x &&
+                    playerRect.y < spiderRect.y + spiderRect.height &&
+                    playerRect.y + playerRect.height > spiderRect.y) {
+
+                    game.lives--;
+
+                    if (game.lives <= 0) {
+                        // Reset current level
+                        resetLevel();
+                    } else {
+                        // Lose life but continue
+                        game.player.x = game.player.lastSafeX;
+                        game.player.y = game.player.lastSafeY;
+                        game.player.velocityX = 0;
+                        game.player.velocityY = 0;
+                        game.player.stunned = true;
+                        game.player.stunTime = 3000;
+                    }
+                    break;
+                }
+            }
+
+            // Check portal collision
+            if (game.portal) {
+                const portalRect = {
+                    x: game.portal.x,
+                    y: game.portal.y,
+                    width: game.portal.width,
+                    height: game.portal.height
+                };
+
+                if (playerRect.x < portalRect.x + portalRect.width &&
+                    playerRect.x + playerRect.width > portalRect.x &&
+                    playerRect.y < portalRect.y + portalRect.height &&
+                    playerRect.y + playerRect.height > portalRect.y) {
+
+                    // Enter portal - go to next level with full lives
+                    if (game.level < 4) {
+                        game.level++;
+                        resetLevel();
+                    } else {
+                        // Level 4 completed - show victory and restart from level 1
+                        alert('🎉 GRATULACJE! Ukończyłeś wszystkie 4 poziomy! 🎉\n\nGra zaczyna się od początku.');
+                        game.level = 1;
+                        resetLevel();
+                    }
                 }
             }
         }
@@ -1266,6 +1520,481 @@
             ctx.restore();
         }
 
+        function drawBeetles() {
+            ctx.save();
+            ctx.translate(-game.camera.x, 0);
+
+            for (let beetle of game.beetles) {
+                if (beetle.x > game.camera.x - 50 && beetle.x < game.camera.x + canvas.width + 50) {
+                    const x = beetle.x;
+                    const y = beetle.y;
+                    const w = beetle.width;
+                    const h = beetle.height;
+                    const legOffset = Math.sin(beetle.legPhase) * 3;
+
+                    // Beetle shadow
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+                    ctx.beginPath();
+                    ctx.ellipse(x + w/2, y + h + 2, w/2, 4, 0, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // Beetle body - main shell
+                    const bodyGradient = ctx.createRadialGradient(
+                        x + w/2, y + h/3, 0,
+                        x + w/2, y + h/2, w/2
+                    );
+                    bodyGradient.addColorStop(0, '#8B4513');
+                    bodyGradient.addColorStop(0.5, '#654321');
+                    bodyGradient.addColorStop(1, '#3A2817');
+
+                    ctx.fillStyle = bodyGradient;
+                    ctx.beginPath();
+                    ctx.ellipse(x + w/2, y + h/2, w/2.2, h/2.2, 0, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // Shell division line
+                    ctx.strokeStyle = '#2A1810';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.moveTo(x + w/2, y);
+                    ctx.lineTo(x + w/2, y + h);
+                    ctx.stroke();
+
+                    // Shell spots
+                    ctx.fillStyle = '#4A2817';
+                    const spots = [
+                        {x: x + w * 0.3, y: y + h * 0.3, r: 2},
+                        {x: x + w * 0.7, y: y + h * 0.3, r: 2},
+                        {x: x + w * 0.25, y: y + h * 0.6, r: 1.5},
+                        {x: x + w * 0.75, y: y + h * 0.6, r: 1.5}
+                    ];
+                    for (let spot of spots) {
+                        ctx.beginPath();
+                        ctx.arc(spot.x, spot.y, spot.r, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+
+                    // Head
+                    ctx.fillStyle = '#654321';
+                    ctx.beginPath();
+                    if (beetle.direction === 1) {
+                        ctx.ellipse(x + w - 5, y + h/2, 8, 6, 0, 0, Math.PI * 2);
+                    } else {
+                        ctx.ellipse(x + 5, y + h/2, 8, 6, 0, 0, Math.PI * 2);
+                    }
+                    ctx.fill();
+
+                    // Eyes
+                    ctx.fillStyle = '#FF0000';
+                    if (beetle.direction === 1) {
+                        ctx.beginPath();
+                        ctx.arc(x + w - 3, y + h/2 - 2, 1.5, 0, Math.PI * 2);
+                        ctx.arc(x + w - 3, y + h/2 + 2, 1.5, 0, Math.PI * 2);
+                        ctx.fill();
+                    } else {
+                        ctx.beginPath();
+                        ctx.arc(x + 3, y + h/2 - 2, 1.5, 0, Math.PI * 2);
+                        ctx.arc(x + 3, y + h/2 + 2, 1.5, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+
+                    // Antennae
+                    ctx.strokeStyle = '#4A2817';
+                    ctx.lineWidth = 1.5;
+                    if (beetle.direction === 1) {
+                        ctx.beginPath();
+                        ctx.moveTo(x + w - 5, y + h/2 - 4);
+                        ctx.lineTo(x + w + 2, y + h/2 - 8);
+                        ctx.stroke();
+                        ctx.beginPath();
+                        ctx.moveTo(x + w - 5, y + h/2 + 4);
+                        ctx.lineTo(x + w + 2, y + h/2 + 8);
+                        ctx.stroke();
+                    } else {
+                        ctx.beginPath();
+                        ctx.moveTo(x + 5, y + h/2 - 4);
+                        ctx.lineTo(x - 2, y + h/2 - 8);
+                        ctx.stroke();
+                        ctx.beginPath();
+                        ctx.moveTo(x + 5, y + h/2 + 4);
+                        ctx.lineTo(x - 2, y + h/2 + 8);
+                        ctx.stroke();
+                    }
+
+                    // Legs (6 legs - 3 on each side)
+                    ctx.strokeStyle = '#3A2817';
+                    ctx.lineWidth = 2;
+
+                    // Left side legs
+                    for (let i = 0; i < 3; i++) {
+                        const legX = x + w * (0.25 + i * 0.25);
+                        const legY = y + h;
+                        const offset = (i % 2 === 0) ? legOffset : -legOffset;
+
+                        ctx.beginPath();
+                        ctx.moveTo(legX, legY);
+                        ctx.lineTo(legX - 6, legY + 8 + offset);
+                        ctx.stroke();
+                    }
+
+                    // Right side legs
+                    for (let i = 0; i < 3; i++) {
+                        const legX = x + w * (0.25 + i * 0.25);
+                        const legY = y + h;
+                        const offset = (i % 2 === 0) ? -legOffset : legOffset;
+
+                        ctx.beginPath();
+                        ctx.moveTo(legX, legY);
+                        ctx.lineTo(legX + 6, legY + 8 + offset);
+                        ctx.stroke();
+                    }
+
+                    // Highlight on shell
+                    ctx.fillStyle = 'rgba(139, 90, 43, 0.4)';
+                    ctx.beginPath();
+                    ctx.ellipse(x + w/2, y + h/3, w/3, h/4, 0, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+
+            ctx.restore();
+        }
+
+        function drawSpiders() {
+            ctx.save();
+            ctx.translate(-game.camera.x, 0);
+
+            for (let spider of game.spiders) {
+                if (spider.x > game.camera.x - 50 && spider.x < game.camera.x + canvas.width + 50) {
+                    const x = spider.x;
+                    const y = spider.y;
+                    const w = spider.width;
+                    const h = spider.height;
+
+                    // Spider web/thread
+                    if (spider.webLength > 0) {
+                        ctx.strokeStyle = 'rgba(200, 200, 200, 0.6)';
+                        ctx.lineWidth = 1;
+                        ctx.beginPath();
+                        ctx.moveTo(x, 50);
+                        ctx.lineTo(x, y);
+                        ctx.stroke();
+
+                        // Web shine effect
+                        ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+                        ctx.lineWidth = 0.5;
+                        ctx.beginPath();
+                        ctx.moveTo(x - 1, 50);
+                        ctx.lineTo(x - 1, y);
+                        ctx.stroke();
+                    }
+
+                    // Spider shadow
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+                    ctx.beginPath();
+                    ctx.ellipse(x, 340, w/2, 4, 0, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // Spider body
+                    const bodyGradient = ctx.createRadialGradient(x, y, 0, x, y, w/2);
+                    bodyGradient.addColorStop(0, '#2F2F2F');
+                    bodyGradient.addColorStop(0.6, '#1A1A1A');
+                    bodyGradient.addColorStop(1, '#000000');
+
+                    // Abdomen (back part)
+                    ctx.fillStyle = bodyGradient;
+                    ctx.beginPath();
+                    ctx.ellipse(x, y + 3, w/2.5, h/2.2, 0, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // Cephalothorax (front part)
+                    ctx.fillStyle = bodyGradient;
+                    ctx.beginPath();
+                    ctx.ellipse(x, y - 3, w/3, h/3, 0, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // Spider legs (8 legs - 4 on each side)
+                    ctx.strokeStyle = '#1A1A1A';
+                    ctx.lineWidth = 2;
+                    ctx.lineCap = 'round';
+
+                    const legAnimation = Math.sin(spider.state === 'dropping' || spider.state === 'rising' ? Date.now() * 0.01 : 0);
+
+                    for (let i = 0; i < 4; i++) {
+                        const legY = y - 5 + (i * 4);
+                        const legLength = w/2 + 4;
+                        const legBend = 8;
+                        const wiggle = legAnimation * 2;
+
+                        // Left legs
+                        ctx.beginPath();
+                        ctx.moveTo(x - 4, legY);
+                        ctx.lineTo(x - legLength/2 - wiggle, legY - legBend);
+                        ctx.lineTo(x - legLength - wiggle, legY - legBend/2);
+                        ctx.stroke();
+
+                        // Right legs
+                        ctx.beginPath();
+                        ctx.moveTo(x + 4, legY);
+                        ctx.lineTo(x + legLength/2 + wiggle, legY - legBend);
+                        ctx.lineTo(x + legLength + wiggle, legY - legBend/2);
+                        ctx.stroke();
+                    }
+
+                    // Eyes (multiple small eyes)
+                    ctx.fillStyle = '#FF0000';
+                    const eyePositions = [
+                        {x: x - 3, y: y - 5},
+                        {x: x - 1, y: y - 6},
+                        {x: x + 1, y: y - 6},
+                        {x: x + 3, y: y - 5}
+                    ];
+                    for (let eye of eyePositions) {
+                        ctx.beginPath();
+                        ctx.arc(eye.x, eye.y, 1, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+
+                    // Fangs (small)
+                    ctx.strokeStyle = '#FFE5B4';
+                    ctx.lineWidth = 1;
+                    ctx.beginPath();
+                    ctx.moveTo(x - 2, y - 2);
+                    ctx.lineTo(x - 3, y + 2);
+                    ctx.stroke();
+                    ctx.beginPath();
+                    ctx.moveTo(x + 2, y - 2);
+                    ctx.lineTo(x + 3, y + 2);
+                    ctx.stroke();
+
+                    // Highlight on body
+                    ctx.fillStyle = 'rgba(80, 80, 80, 0.4)';
+                    ctx.beginPath();
+                    ctx.ellipse(x - 2, y + 1, w/6, h/6, 0, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+
+            ctx.restore();
+        }
+
+        function drawPortal() {
+            if (!game.portal) return;
+
+            ctx.save();
+            ctx.translate(-game.camera.x, 0);
+
+            if (game.portal.x > game.camera.x - 100 && game.portal.x < game.camera.x + canvas.width + 100) {
+                const x = game.portal.x;
+                const y = game.portal.y;
+                const w = game.portal.width;
+                const h = game.portal.height;
+                const phase = game.portalAnimationPhase;
+
+                // Ground platform for portal
+                const platformGradient = ctx.createLinearGradient(0, y + h, 0, y + h + 20);
+                platformGradient.addColorStop(0, '#696969');
+                platformGradient.addColorStop(1, '#3A3A3A');
+                ctx.fillStyle = platformGradient;
+                ctx.fillRect(x - 20, y + h, w + 40, 20);
+
+                // Stone base
+                ctx.fillStyle = '#4A4A4A';
+                ctx.fillRect(x - 15, y + h, 15, 15);
+                ctx.fillRect(x + w, y + h, 15, 15);
+
+                // Draw stone pillars with texture
+                for (let side = 0; side < 2; side++) {
+                    const pillarX = side === 0 ? x - 12 : x + w + 2;
+
+                    // Pillar gradient
+                    const pillarGradient = ctx.createLinearGradient(pillarX, y, pillarX + 10, y);
+                    pillarGradient.addColorStop(0, '#5A5A5A');
+                    pillarGradient.addColorStop(0.5, '#6A6A6A');
+                    pillarGradient.addColorStop(1, '#4A4A4A');
+
+                    ctx.fillStyle = pillarGradient;
+                    ctx.fillRect(pillarX, y + 10, 10, h - 10);
+
+                    // Stone brick lines
+                    ctx.strokeStyle = '#3A3A3A';
+                    ctx.lineWidth = 2;
+                    for (let i = 0; i < 5; i++) {
+                        const brickY = y + 10 + (i * (h - 10) / 5);
+                        ctx.beginPath();
+                        ctx.moveTo(pillarX, brickY);
+                        ctx.lineTo(pillarX + 10, brickY);
+                        ctx.stroke();
+                    }
+
+                    // Pillar capital (top decoration)
+                    ctx.fillStyle = '#6A6A6A';
+                    ctx.fillRect(pillarX - 3, y + 5, 16, 5);
+                    ctx.fillRect(pillarX - 2, y, 14, 5);
+                }
+
+                // Top arch with depth
+                ctx.lineWidth = 12;
+                ctx.strokeStyle = '#5A5A5A';
+                ctx.beginPath();
+                ctx.arc(x + w/2, y + 10, w/2 + 8, Math.PI, 0, false);
+                ctx.stroke();
+
+                // Arch inner shadow
+                ctx.lineWidth = 8;
+                ctx.strokeStyle = '#4A4A4A';
+                ctx.beginPath();
+                ctx.arc(x + w/2, y + 10, w/2 + 8, Math.PI, 0, false);
+                ctx.stroke();
+
+                // Arch highlight
+                ctx.lineWidth = 3;
+                ctx.strokeStyle = '#7A7A7A';
+                ctx.beginPath();
+                ctx.arc(x + w/2, y + 10, w/2 + 4, Math.PI + 0.5, Math.PI * 2 - 0.5, false);
+                ctx.stroke();
+
+                // Ancient runes on arch
+                ctx.fillStyle = '#FFD700';
+                ctx.font = '12px serif';
+                ctx.textAlign = 'center';
+                const runes = ['◇', '◆', '◈', '◇'];
+                for (let i = 0; i < runes.length; i++) {
+                    const runeAngle = Math.PI + (i / (runes.length - 1)) * Math.PI;
+                    const runeX = x + w/2 + Math.cos(runeAngle) * (w/2 + 5);
+                    const runeY = y + 10 + Math.sin(runeAngle) * (w/2 + 5);
+                    ctx.fillText(runes[i], runeX, runeY);
+                }
+
+                // Outer energy glow (pulsating)
+                const pulseIntensity = Math.sin(phase * 2) * 0.3 + 0.7;
+                const outerGlow = ctx.createRadialGradient(x + w/2, y + h/2, 0, x + w/2, y + h/2, w * 0.8);
+                outerGlow.addColorStop(0, `rgba(138, 43, 226, ${0.4 * pulseIntensity})`);
+                outerGlow.addColorStop(0.5, `rgba(75, 0, 130, ${0.2 * pulseIntensity})`);
+                outerGlow.addColorStop(1, 'rgba(75, 0, 130, 0)');
+
+                ctx.fillStyle = outerGlow;
+                ctx.beginPath();
+                ctx.ellipse(x + w/2, y + h/2, w * 0.8, h * 0.6, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Portal interior - dark center with energy
+                const portalGradient = ctx.createRadialGradient(
+                    x + w/2, y + h/2, 0,
+                    x + w/2, y + h/2, w/2
+                );
+                portalGradient.addColorStop(0, '#000033');
+                portalGradient.addColorStop(0.3, '#1a0066');
+                portalGradient.addColorStop(0.6, '#4B0082');
+                portalGradient.addColorStop(0.85, '#8A2BE2');
+                portalGradient.addColorStop(1, '#9370DB');
+
+                ctx.fillStyle = portalGradient;
+                ctx.beginPath();
+                ctx.ellipse(x + w/2, y + h/2 + 5, w/2 - 5, h/2 - 5, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Spiral energy streams
+                for (let stream = 0; stream < 3; stream++) {
+                    ctx.strokeStyle = `rgba(138, 43, 226, ${0.6 - stream * 0.15})`;
+                    ctx.lineWidth = 3 - stream;
+                    ctx.beginPath();
+
+                    for (let i = 0; i < 50; i++) {
+                        const t = i / 50;
+                        const angle = t * Math.PI * 4 + phase * (stream + 1) + stream * Math.PI * 2/3;
+                        const radius = (1 - t) * (w/2 - 10);
+                        const px = x + w/2 + Math.cos(angle) * radius;
+                        const py = y + h/2 + 5 + Math.sin(angle) * radius * (h/w);
+
+                        if (i === 0) {
+                            ctx.moveTo(px, py);
+                        } else {
+                            ctx.lineTo(px, py);
+                        }
+                    }
+                    ctx.stroke();
+                }
+
+                // Energy particles floating
+                for (let i = 0; i < 15; i++) {
+                    const angle = (i / 15) * Math.PI * 2 + phase * 1.5;
+                    const radius = (Math.sin(phase * 3 + i * 0.5) * 0.3 + 0.5) * (w/2 - 10);
+                    const px = x + w/2 + Math.cos(angle) * radius;
+                    const py = y + h/2 + 5 + Math.sin(angle) * radius * (h/w);
+
+                    const particleSize = Math.sin(phase * 4 + i) * 1.5 + 2;
+                    const particleAlpha = Math.sin(phase * 2 + i) * 0.4 + 0.6;
+
+                    const particleGradient = ctx.createRadialGradient(px, py, 0, px, py, particleSize);
+                    particleGradient.addColorStop(0, `rgba(200, 150, 255, ${particleAlpha})`);
+                    particleGradient.addColorStop(1, 'rgba(138, 43, 226, 0)');
+
+                    ctx.fillStyle = particleGradient;
+                    ctx.beginPath();
+                    ctx.arc(px, py, particleSize, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                // Center bright vortex
+                const vortexGradient = ctx.createRadialGradient(
+                    x + w/2, y + h/2 + 5, 0,
+                    x + w/2, y + h/2 + 5, w/6
+                );
+                vortexGradient.addColorStop(0, `rgba(255, 255, 255, ${0.9 * pulseIntensity})`);
+                vortexGradient.addColorStop(0.3, `rgba(200, 150, 255, ${0.7 * pulseIntensity})`);
+                vortexGradient.addColorStop(0.7, `rgba(138, 43, 226, ${0.3 * pulseIntensity})`);
+                vortexGradient.addColorStop(1, 'rgba(138, 43, 226, 0)');
+
+                ctx.fillStyle = vortexGradient;
+                ctx.beginPath();
+                ctx.arc(x + w/2, y + h/2 + 5, w/6, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Lightning/energy bolts occasionally
+                if (Math.sin(phase * 5) > 0.8) {
+                    ctx.strokeStyle = `rgba(255, 255, 255, ${0.8})`;
+                    ctx.lineWidth = 2;
+                    ctx.shadowBlur = 10;
+                    ctx.shadowColor = '#8A2BE2';
+
+                    for (let bolt = 0; bolt < 3; bolt++) {
+                        const boltAngle = (bolt / 3) * Math.PI * 2 + phase;
+                        ctx.beginPath();
+                        ctx.moveTo(x + w/2, y + h/2 + 5);
+                        const endX = x + w/2 + Math.cos(boltAngle) * (w/2 - 15);
+                        const endY = y + h/2 + 5 + Math.sin(boltAngle) * (h/2 - 15);
+                        ctx.lineTo(endX, endY);
+                        ctx.stroke();
+                    }
+
+                    ctx.shadowBlur = 0;
+                }
+
+                // Portal label
+                ctx.fillStyle = '#FFD700';
+                ctx.font = 'bold 16px serif';
+                ctx.textAlign = 'center';
+                ctx.shadowBlur = 5;
+                ctx.shadowColor = '#000';
+                ctx.fillText('PORTAL', x + w/2, y - 25);
+
+                if (game.level < 4) {
+                    ctx.font = '12px serif';
+                    ctx.fillStyle = '#FFF';
+                    ctx.fillText(`→ Poziom ${game.level + 1}`, x + w/2, y - 8);
+                } else {
+                    ctx.font = '12px serif';
+                    ctx.fillStyle = '#FFD700';
+                    ctx.fillText('KONIEC', x + w/2, y - 8);
+                }
+
+                ctx.shadowBlur = 0;
+            }
+
+            ctx.restore();
+        }
+
         function drawSkyGradient() {
             const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
             gradient.addColorStop(0, '#87CEEB');
@@ -1277,40 +2006,110 @@
             ctx.fillRect(0, 0, canvas.width, canvas.height);
         }
 
+        function drawLives() {
+            // Draw hearts for lives
+            for (let i = 0; i < game.lives; i++) {
+                const x = 10 + i * 35;
+                const y = 25;
+
+                ctx.fillStyle = '#FF0000';
+                ctx.beginPath();
+                ctx.moveTo(x + 10, y + 8);
+
+                // Left half of heart
+                ctx.bezierCurveTo(x + 10, y + 5, x + 5, y, x + 5, y);
+                ctx.bezierCurveTo(x, y, x, y + 5, x, y + 8);
+                ctx.bezierCurveTo(x, y + 11, x + 5, y + 14, x + 10, y + 18);
+
+                // Right half of heart
+                ctx.bezierCurveTo(x + 15, y + 14, x + 20, y + 11, x + 20, y + 8);
+                ctx.bezierCurveTo(x + 20, y + 5, x + 20, y, x + 15, y);
+                ctx.bezierCurveTo(x + 15, y, x + 10, y + 5, x + 10, y + 8);
+
+                ctx.closePath();
+                ctx.fill();
+
+                // Heart shine effect
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+                ctx.beginPath();
+                ctx.arc(x + 7, y + 5, 3, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // Draw empty hearts for lost lives
+            for (let i = game.lives; i < 3; i++) {
+                const x = 10 + i * 35;
+                const y = 25;
+
+                ctx.strokeStyle = '#999';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(x + 10, y + 8);
+
+                ctx.bezierCurveTo(x + 10, y + 5, x + 5, y, x + 5, y);
+                ctx.bezierCurveTo(x, y, x, y + 5, x, y + 8);
+                ctx.bezierCurveTo(x, y + 11, x + 5, y + 14, x + 10, y + 18);
+
+                ctx.bezierCurveTo(x + 15, y + 14, x + 20, y + 11, x + 20, y + 8);
+                ctx.bezierCurveTo(x + 20, y + 5, x + 20, y, x + 15, y);
+                ctx.bezierCurveTo(x + 15, y, x + 10, y + 5, x + 10, y + 8);
+
+                ctx.closePath();
+                ctx.stroke();
+            }
+        }
+
         function draw() {
             drawSkyGradient();
-            
+
             drawSky();
             drawMountains();
             drawClouds();
+            drawSpiders();
             drawButterflies();
             drawBees();
             drawGround();
             drawFlowers();
             drawObstacles();
+            drawPortal();
             drawPlayer();
-            
+
+            drawLives();
+
             ctx.fillStyle = '#333';
             ctx.font = '16px Arial';
-            ctx.fillText(`Pozycja: ${Math.floor(game.player.x)}`, 10, 30);
+            ctx.fillText(`Pozycja: ${Math.floor(game.player.x)}`, 10, 60);
+            ctx.fillText(`Poziom: ${game.level}`, canvas.width - 100, 30);
         }
 
         function gameLoop() {
-            updatePlayer();
-            updateCamera();
-            checkCollisions();
+            if (game.started) {
+                updatePlayer();
+                updateCamera();
+                checkCollisions();
+            }
             draw();
             requestAnimationFrame(gameLoop);
         }
 
         document.addEventListener('keydown', (e) => {
-            game.keys[e.key] = true;
-            game.keys[e.code] = true; // Also store by key code
+            if (game.started) {
+                game.keys[e.key] = true;
+                game.keys[e.code] = true; // Also store by key code
+            }
         });
 
         document.addEventListener('keyup', (e) => {
-            game.keys[e.key] = false;
-            game.keys[e.code] = false; // Also clear by key code
+            if (game.started) {
+                game.keys[e.key] = false;
+                game.keys[e.code] = false; // Also clear by key code
+            }
+        });
+
+        document.getElementById('playButton').addEventListener('click', () => {
+            game.started = true;
+            document.getElementById('menu').classList.add('hidden');
+            document.querySelector('.controls').style.display = 'block';
         });
 
         gameLoop();
