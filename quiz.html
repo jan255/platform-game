@@ -156,11 +156,88 @@
             color: #fff;
         }
 
-        .buttons {
+        .video-container {
+            margin-top: 20px;
+            display: none;
+        }
+
+        .video-container iframe {
+            width: 100%;
+            max-width: 560px;
+            height: 315px;
+            border-radius: 10px;
+            border: 2px solid #FFE81F;
+        }
+
+        .video-container img {
+            width: 100%;
+            max-width: 400px;
+            border-radius: 10px;
+            border: 2px solid #FFE81F;
+        }
+
+        .question-hint {
+            margin-top: 20px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .question-hint img {
+            width: 100%;
+            max-width: 400px;
+            border-radius: 10px;
+            border: 2px solid #FFE81F;
+            animation: fadeIn 0.5s;
+        }
+
+        .question-hint a {
+            display: inline-block;
+            color: #FFE81F;
+            background: rgba(74, 144, 226, 0.3);
+            padding: 15px 30px;
+            border-radius: 10px;
+            text-decoration: none;
+            font-size: 1.2em;
+            border: 2px solid #4a90e2;
+            transition: all 0.3s;
+            margin-top: 10px;
+        }
+
+        .question-hint a:hover {
+            background: rgba(74, 144, 226, 0.5);
+            transform: scale(1.05);
+            box-shadow: 0 5px 15px rgba(74, 144, 226, 0.4);
+        }
+
+        .action-buttons {
             display: flex;
-            gap: 20px;
+            gap: 15px;
             justify-content: center;
             flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
+
+        .navigation-buttons {
+            display: flex;
+            gap: 20px;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            margin-top: 30px;
+        }
+
+        .navigation-buttons button {
+            min-width: 200px;
+        }
+
+        button:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+            background: linear-gradient(135deg, #888, #666);
+        }
+
+        button:disabled:hover {
+            transform: none;
+            box-shadow: 0 5px 15px rgba(255, 232, 31, 0.3);
         }
 
         button {
@@ -190,6 +267,32 @@
             margin-top: 30px;
             font-size: 1.2em;
             color: #4a90e2;
+        }
+
+        .bonus-screen {
+            display: none;
+            text-align: center;
+            animation: fadeIn 0.5s;
+        }
+
+        .bonus-title {
+            font-size: 3em;
+            color: #FFE81F;
+            text-shadow: 0 0 20px #FFE81F;
+            margin-bottom: 30px;
+        }
+
+        .bonus-question {
+            font-size: 2.2em;
+            color: #fff;
+            margin-bottom: 30px;
+            line-height: 1.4;
+        }
+
+        .bonus-info {
+            font-size: 1.5em;
+            color: #4a90e2;
+            margin-bottom: 40px;
         }
 
         .finish-screen {
@@ -238,25 +341,56 @@
         <div class="category-badge" id="categoryBadge"></div>
         <div class="emoji" style="font-size: 4em; margin: 20px 0;">🎯</div>
         <button id="startCategoryBtn">ROZPOCZNIJ KATEGORIĘ</button>
+        <div id="categoryMusicPlayer"></div>
     </div>
 
     <div class="question-container" id="questionContainer">
+        <div class="action-buttons">
+            <button id="prevCategoryBtn" style="display: none;">⬅️⬅️ POPRZEDNIA KATEGORIA</button>
+        </div>
+
         <div class="question-number" id="questionNumber"></div>
         <div class="question" id="question"></div>
+        <div class="question-hint" id="questionHint"></div>
+
+        <div style="text-align: center; margin: 25px 0;">
+            <button id="showAnswerBtn">POKAŻ ODPOWIEDŹ</button>
+        </div>
+
         <div class="options" id="options"></div>
 
         <div class="answer-section" id="answerSection">
             <div class="answer-label">✅ POPRAWNA ODPOWIEDŹ:</div>
             <div class="answer-text" id="answerText"></div>
+            <div class="video-container" id="videoContainer"></div>
         </div>
 
-        <div class="buttons">
-            <button id="prevBtn" style="display: none;">⬅️ POPRZEDNIE</button>
-            <button id="showAnswerBtn">POKAŻ ODPOWIEDŹ</button>
+        <div class="navigation-buttons">
+            <button id="prevBtn">⬅️ POPRZEDNIE</button>
             <button id="nextBtn">NASTĘPNE ➡️</button>
         </div>
 
         <div class="progress" id="progress"></div>
+    </div>
+
+    <div class="bonus-screen" id="bonusScreen">
+        <div class="bonus-title">⭐ PYTANIE BONUSOWE ⭐</div>
+        <div class="emoji">💰🎬🌟</div>
+        <div class="bonus-question">Ile miliardów dolarów zarobiły filmy Star Wars?</div>
+        <div class="bonus-info">Drużyna, która jest bliżej prawidłowego wyniku otrzyma dodatkowe <strong>5 punktów</strong></div>
+
+        <div style="text-align: center; margin: 25px 0;">
+            <button id="showBonusAnswerBtn">POKAŻ ODPOWIEDŹ</button>
+        </div>
+
+        <div class="answer-section" id="bonusAnswerSection" style="margin-top: 30px;">
+            <div class="answer-label">✅ POPRAWNA ODPOWIEDŹ:</div>
+            <div class="answer-text" style="font-size: 2.5em;">10 miliardów USD</div>
+        </div>
+
+        <div style="margin-top: 40px;">
+            <button id="goToFinishBtn">ZAKOŃCZ QUIZ ➡️</button>
+        </div>
     </div>
 
     <div class="finish-screen" id="finishScreen">
@@ -278,17 +412,20 @@
                 {
                     q: "Jakim kolorem świecił miecz Obi-Wana w Nowej nadziei?",
                     options: ["A) Niebieski", "B) Zielony", "C) Fioletowy", "D) Czerwony"],
-                    answer: "A) Niebieski"
+                    answer: "A) Niebieski",
+                    videoUrl: "https://www.youtube.com/embed/Fq3nbHF8bJI?autoplay=1"
                 },
                 {
                     q: "Kto powiedział: Nie próbuj. Rób albo nie rób?",
                     options: ["A) Obi-Wan", "B) Yoda", "C) Luke", "D) Han Solo"],
-                    answer: "B) Yoda"
+                    answer: "B) Yoda",
+                    videoUrl: "https://www.youtube.com/embed/xKb-zQt3COs?autoplay=1"
                 },
                 {
                     q: "Kto był mistrzem Obi-Wana Kenobiego?",
                     options: ["A) Mace Windu", "B) Yoda", "C) Qui-Gon Jinn", "D) Plo Koon"],
-                    answer: "C) Qui-Gon Jinn"
+                    answer: "C) Qui-Gon Jinn",
+                    imageUrl: "https://upload.wikimedia.org/wikipedia/en/a/ad/Qui-Gon_Jinn.png"
                 },
                 {
                     q: "Jaką nazwę nosi superbroń Imperium zdolna niszczyć planety?",
@@ -308,7 +445,8 @@
                 {
                     q: "Muzykę do Star Wars skomponował John Williams. Który film również ma muzykę jego autorstwa?",
                     options: ["A) Titanic", "B) Harry Potter", "C) Władca Pierścieni", "D) Król Lew"],
-                    answer: "B) Harry Potter"
+                    answer: "B) Harry Potter",
+                    videoUrl: "https://www.youtube.com/watch?v=wtHra9tFISY&list=RDwtHra9tFISY&start_radio=1&autoplay=1"
                 },
                 {
                     q: "Jak nazywa się osoba, która prowadzi orkiestrę?",
@@ -338,12 +476,14 @@
                 {
                     q: "Z jakiego kraju pochodzi aktorka wcielająca się w rolę Rey?",
                     options: ["A) Wielka Brytania", "B) USA", "C) Australia", "D) Republika Południowej Afryki"],
-                    answer: "A) Wielka Brytania"
+                    answer: "A) Wielka Brytania",
+                    hintImageUrl: "https://fwcdn.pl/nph/867323/2023/43956_1.8.jpg"
                 },
                 {
                     q: "Zanim Harrison Ford wcielił się w rolę Hana Solo, wykonywał inny zawód. Jaki?",
                     options: ["A) Kelner", "B) Pracownik sklepu mięsnego", "C) Stolarz", "D) Robotnik drogowy"],
-                    answer: "C) Stolarz"
+                    answer: "C) Stolarz",
+                    hintImageUrl: "https://fwmedia.fandomwire.com/wp-content/uploads/2024/06/04095245/harrison-ford-star-wars.jpg"
                 },
                 {
                     q: "W starożytnej Grecji - kto mógł występować na scenie?",
@@ -373,7 +513,8 @@
                 {
                     q: "Jak nazywa się jezioro, na którym Anakin pocałował Padmé (we Włoszech)?",
                     options: ["A) Como", "B) Garda", "C) Maggiore", "D) Trasimeno"],
-                    answer: "A) Como"
+                    answer: "A) Como",
+                    hintLinkUrl: "https://youtu.be/yQ_PibZ1Q8M?si=ULMAIAKXKkd8AVuh"
                 },
                 {
                     q: "Która strona świata jest naprzeciwko północy na kompasie?",
@@ -388,7 +529,8 @@
                 {
                     q: "Jak nazywa się najwyższa góra świata?",
                     options: ["A) K2", "B) Kilimandżaro", "C) Mont Blanc", "D) Mount Everest"],
-                    answer: "D) Mount Everest"
+                    answer: "D) Mount Everest",
+                    hintImageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e7/Everest_North_Face_toward_Base_Camp_Tibet_Luca_Galuzzi_2006.jpg/800px-Everest_North_Face_toward_Base_Camp_Tibet_Luca_Galuzzi_2006.jpg"
                 }
             ]
         },
@@ -398,7 +540,8 @@
                 {
                     q: "Jak nazywa się planeta, na której żyją mali futrzani wojownicy - Ewoki?",
                     options: ["A) Tatooine", "B) Endor", "C) Jakku", "D) Dagobah"],
-                    answer: "B) Endor"
+                    answer: "B) Endor",
+                    hintImageUrl: "https://upload.wikimedia.org/wikipedia/en/e/ee/Wicket_W_Warrick.png"
                 },
                 {
                     q: "Jakie zwierzę jest symbolem Australii i potrafi skakać na duże odległości?",
@@ -451,7 +594,7 @@
 
     function showCategoryScreen() {
         if (currentCategoryIndex >= questions.length) {
-            showFinish();
+            showBonus();
             return;
         }
 
@@ -459,14 +602,32 @@
         document.getElementById('categoryBadge').textContent = category.category;
         document.getElementById('categoryScreen').style.display = 'block';
         document.getElementById('questionContainer').style.display = 'none';
+
+        // Odtwórz muzykę dla kategorii Muzyka
+        const musicPlayer = document.getElementById('categoryMusicPlayer');
+        if (category.category === "🎵 MUZYKA") {
+            // Załaduj iframe YouTube z autoplay od razu
+            musicPlayer.innerHTML = '<iframe width="560" height="315" src="https://www.youtube.com/embed/-bzWSJG93P8?autoplay=1&loop=1&playlist=-bzWSJG93P8" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen style="margin-top: 20px; border-radius: 10px; border: 2px solid #FFE81F;"></iframe>';
+        } else {
+            // Wyczyść odtwarzacz dla innych kategorii
+            musicPlayer.innerHTML = '';
+        }
     }
 
     function startCategory() {
+        // Zatrzymaj muzykę kategorii
+        const musicPlayer = document.getElementById('categoryMusicPlayer');
+        musicPlayer.innerHTML = '';
+
         currentCategoryQuestions = questions[currentCategoryIndex].questions.map(q => ({
             category: questions[currentCategoryIndex].category,
             q: q.q,
             options: q.options,
-            answer: q.answer
+            answer: q.answer,
+            videoUrl: q.videoUrl,
+            imageUrl: q.imageUrl,
+            hintImageUrl: q.hintImageUrl,
+            hintLinkUrl: q.hintLinkUrl
         }));
 
         currentQuestionIndex = 0;
@@ -481,6 +642,16 @@
         document.getElementById('questionNumber').textContent = 'Pytanie ' + (currentQuestionIndex + 1) + ' z ' + currentCategoryQuestions.length;
         document.getElementById('question').textContent = current.q;
 
+        // Pokaż obrazek-podpowiedź lub link pomocniczy
+        const hintContainer = document.getElementById('questionHint');
+        if (current.hintImageUrl) {
+            hintContainer.innerHTML = '<img src="' + current.hintImageUrl + '" alt="Podpowiedź">';
+        } else if (current.hintLinkUrl) {
+            hintContainer.innerHTML = '<a href="' + current.hintLinkUrl + '" target="_blank">🎬 Kliknij tutaj, aby zobaczyć scenę z filmu</a>';
+        } else {
+            hintContainer.innerHTML = '';
+        }
+
         const optionsContainer = document.getElementById('options');
         optionsContainer.innerHTML = '';
         current.options.forEach(option => {
@@ -490,14 +661,26 @@
             optionsContainer.appendChild(div);
         });
 
+        // Wyczyść i ukryj wideo
+        const videoContainer = document.getElementById('videoContainer');
+        videoContainer.innerHTML = '';
+        videoContainer.style.display = 'none';
+
         document.getElementById('answerSection').style.display = 'none';
         document.getElementById('showAnswerBtn').style.display = 'inline-block';
 
-        // Pokaż/ukryj przycisk POPRZEDNIE
+        // Włącz/wyłącz przycisk POPRZEDNIE
         if (currentQuestionIndex === 0) {
-            document.getElementById('prevBtn').style.display = 'none';
+            document.getElementById('prevBtn').disabled = true;
         } else {
-            document.getElementById('prevBtn').style.display = 'inline-block';
+            document.getElementById('prevBtn').disabled = false;
+        }
+
+        // Pokaż/ukryj przycisk POPRZEDNIA KATEGORIA
+        if (currentCategoryIndex === 0) {
+            document.getElementById('prevCategoryBtn').style.display = 'none';
+        } else {
+            document.getElementById('prevCategoryBtn').style.display = 'inline-block';
         }
 
         // Pokaż przycisk NASTĘPNE
@@ -509,6 +692,38 @@
     function showAnswer() {
         const current = currentCategoryQuestions[currentQuestionIndex];
         document.getElementById('answerText').textContent = current.answer;
+
+        // Pokaż wideo lub obraz jeśli pytanie ma videoUrl lub imageUrl
+        const videoContainer = document.getElementById('videoContainer');
+        if (current.videoUrl) {
+            videoContainer.innerHTML = '';
+            videoContainer.style.display = 'block';
+
+            // Po 3 sekundach otwórz film w nowej zakładce
+            setTimeout(function() {
+                // Jeśli URL to format embed, zamień na watch
+                let finalUrl = current.videoUrl;
+                if (finalUrl.includes('/embed/')) {
+                    finalUrl = finalUrl.replace('/embed/', '/watch?v=').replace('?autoplay=1', '');
+                }
+
+                window.open(finalUrl, '_blank');
+                videoContainer.innerHTML = '<p style="color: #FFE81F; font-size: 1.3em; text-align: center;">Film otworzył się w nowej zakładce 🎬</p>';
+            }, 3000);
+        } else if (current.imageUrl) {
+            // Najpierw pokaż kontener bez obrazu
+            videoContainer.innerHTML = '';
+            videoContainer.style.display = 'block';
+
+            // Po 3 sekundach załaduj obraz
+            setTimeout(function() {
+                videoContainer.innerHTML = '<img src="' + current.imageUrl + '" alt="Odpowiedź">';
+            }, 3000);
+        } else {
+            videoContainer.innerHTML = '';
+            videoContainer.style.display = 'none';
+        }
+
         document.getElementById('answerSection').style.display = 'block';
         document.getElementById('showAnswerBtn').style.display = 'none';
     }
@@ -516,6 +731,25 @@
     function prevQuestion() {
         if (currentQuestionIndex > 0) {
             currentQuestionIndex--;
+            showQuestion();
+        }
+    }
+
+    function prevCategory() {
+        if (currentCategoryIndex > 0) {
+            currentCategoryIndex--;
+            // Wróć do ostatniego pytania poprzedniej kategorii
+            currentCategoryQuestions = questions[currentCategoryIndex].questions.map(q => ({
+                category: questions[currentCategoryIndex].category,
+                q: q.q,
+                options: q.options,
+                answer: q.answer,
+                videoUrl: q.videoUrl,
+                imageUrl: q.imageUrl,
+                hintImageUrl: q.hintImageUrl,
+                hintLinkUrl: q.hintLinkUrl
+            }));
+            currentQuestionIndex = currentCategoryQuestions.length - 1;
             showQuestion();
         }
     }
@@ -529,6 +763,23 @@
             currentCategoryIndex++;
             showCategoryScreen();
         }
+    }
+
+    function showBonus() {
+        document.getElementById('questionContainer').style.display = 'none';
+        document.getElementById('categoryScreen').style.display = 'none';
+        document.getElementById('bonusScreen').style.display = 'block';
+        document.getElementById('bonusAnswerSection').style.display = 'none';
+    }
+
+    function showBonusAnswer() {
+        document.getElementById('bonusAnswerSection').style.display = 'block';
+        document.getElementById('showBonusAnswerBtn').style.display = 'none';
+    }
+
+    function goToFinish() {
+        document.getElementById('bonusScreen').style.display = 'none';
+        showFinish();
     }
 
     function showFinish() {
@@ -550,7 +801,10 @@
     document.getElementById('startCategoryBtn').addEventListener('click', startCategory);
     document.getElementById('showAnswerBtn').addEventListener('click', showAnswer);
     document.getElementById('prevBtn').addEventListener('click', prevQuestion);
+    document.getElementById('prevCategoryBtn').addEventListener('click', prevCategory);
     document.getElementById('nextBtn').addEventListener('click', nextQuestion);
+    document.getElementById('showBonusAnswerBtn').addEventListener('click', showBonusAnswer);
+    document.getElementById('goToFinishBtn').addEventListener('click', goToFinish);
     document.getElementById('restartBtn').addEventListener('click', restartQuiz);
 </script>
 </body>
