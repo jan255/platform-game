@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Phaser Drive</title>
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-color: #000;
+        }
+        canvas {
+            display: block;
+            margin: 0 auto;
+            image-rendering: pixelated;
+        }
+    </style>
+</head>
+<body>
+    <script>
+        class GameScene extends Phaser.Scene {
+            constructor() {
+                super({ key: 'GameScene' });
+                this.roadSegments = [];
+                this.segmentLength = 200;
+                this.trackLength = 100;
+                this.cameraDepth = 0.84;
+                this.playerX = 0;
+                this.speed = 0;
+                this.position = 0;
+                this.curve = 0;
+                this.playerZ = 0;
+            }
+
+            preload() {
+                // Load assets
+                this.load.image('car-yellow', 'assets/car-yellow.png');
+                this.load.image('car-red', 'assets/car-red.png');
+                this.load.image('car-green', 'assets/car-green.png');
+                this.load.image('car-army', 'assets/car-army.png');
+                this.load.image('tree', 'assets/tree.png');
+                this.load.image('tree2', 'assets/tree2.png');
+                this.load.image('tree3', 'assets/tree3.png');
+                this.load.image('boulder', 'assets/boulder.png');
+                this.load.image('boulder2', 'assets/boulder2.png');
+                this.load.image('turn-sign', 'assets/turn-sign.png');
+            }
+
+            create() {
+                const width = this.cameras.main.width;
+                const height = this.cameras.main.height;
+
+                // Create graphics for road
+                this.roadGraphics = this.add.graphics();
+                this.roadGraphics.setDepth(0); // Road should be behind everything
+
+                // Build the track
+                this.buildTrack();
+
+                // Player car - custom drawn
+                this.playerCar = this.add.container(width / 2, height - 100);
+                this.createPlayerCar();
+                this.playerCar.setDepth(1000);
+
+                // Initialize sprites array
+                this.sprites3D = [];
+
+                // Generate scenery objects along the track (must be after buildTrack)
+                this.generateScenery();
+
+                // UI
+                this.speedText = this.add.text(16, 16, 'Speed: 0 km/h', {
+                    fontSize: '28px',
+                    fill: '#fff',
+                    stroke: '#000',
+                    strokeThickness: 4,
+                    fontFamily: 'Arial'
+                }).setDepth(2000);
+
+                this.scoreText = this.add.text(16, 50, 'Distance: 0 m', {
+                    fontSize: '24px',
+                    fill: '#fff',
+                    stroke: '#000',
+                    strokeThickness: 4,
+                    fontFamily: 'Arial'
+                }).setDepth(2000);
+
+                this.instructionText = this.add.text(width / 2, 16, 'Arrow Keys: Steer & Accelerate', {
+                    fontSize: '20px',
+                    fill: '#ffff00',
+                    stroke: '#000',
+                    strokeThickness: 3,
+                    fontFamily: 'Arial'
+                }).setOrigin(0.5, 0).setDepth(2000);
+
+                // Input
+                this.cursors = this.input.keyboard.createCursorKeys();
+
+                // Camera mode toggle button - top right
+                this.firstPersonMode = false;
+
+                const buttonBg = this.add.rectangle(width - 70, 30, 120, 50, 0x333333, 0.8);
+                buttonBg.setDepth(2000);
+                buttonBg.setInteractive({ useHandCursor: true });
+
+                this.cameraButtonText = this.add.text(width - 70, 30, '👁️ FPP', {
+                    fontSize: '20px',
+                    fill: '#fff',
+                    fontFamily: 'Arial'
+                }).setOrigin(0.5).setDepth(2001);
+
+                buttonBg.on('pointerdown', () => {
+                    this.firstPersonMode = !this.firstPersonMode;
+                    if (this.firstPersonMode) {
+                        this.cameraButtonText.setText('🚗 TPP');
+                    } else {
+                        this.cameraButtonText.setText('👁️ FPP');
+                    }
+                });
+
+                buttonBg.on('pointerover', () => {
+                    buttonBg.setFillStyle(0x555555, 0.9);
+                });
+
+                buttonBg.on('pointerout', () => {
+                    buttonBg.setFillStyle(0x333333, 0.8);
+                });
+            }
+
+            createPlayerCar() {
+                const carBody = this.add.graphics();
+
+                // Shadow - elongated for sports car
+                carBody.fillStyle(0x000000, 0.3);
+                carBody.fillEllipse(0, 60, 70, 20);
+
+                // Wide performance tires
+                carBody.fillStyle(0x1a1a1a, 1);
+                carBody.fillRoundedRect(-32, 20, 18, 30, 4);
+                carBody.fillRoundedRect(14, 20, 18, 30, 4);
+
+                // Racing rims - wide
+                carBody.fillStyle(0xAA5500, 1); // Gold/bronze rims
+                carBody.fillRoundedRect(-29, 24, 12, 22, 3);
+                carBody.fillRoundedRect(17, 24, 12, 22, 3);
+
+                // Rim spokes
+                carBody.fillStyle(0xDD8800, 1);
+                carBody.fillRect(-27, 28, 8, 3);
+                carBody.fillRect(-27, 37, 8, 3);
+                carBody.fillRect(19, 28, 8, 3);
+                carBody.fillRect(19, 37, 8, 3);
+
+                // Lower body/side skirts - aerodynamic
+                carBody.fillStyle(0xFF6600, 1);
+                carBody.fillRoundedRect(-35, 15, 70, 35, 4);
+
+                // Main body - lower and wider sports car profile
+                carBody.fillStyle(0xFF8C00, 1);
+                carBody.fillRoundedRect(-35, -5, 70, 30, 8);
+
+                // Hood - long and sleek
+                carBody.fillStyle(0xFFAA33, 1);
+                carBody.fillRoundedRect(-33, 0, 66, 25, 6);
+
+                // Hood air vents
+                carBody.fillStyle(0x333333, 1);
+                carBody.fillRect(-20, 15, 8, 3);
+                carBody.fillRect(12, 15, 8, 3);
+
+                // Roof - low profile (coupe style)
+                carBody.fillStyle(0xFF7700, 1);
+                carBody.fillRoundedRect(-25, -20, 50, 18, 8);
+
+                // Windshield - angled back (sporty)
+                carBody.beginPath();
+                carBody.fillStyle(0x2A4A6A, 0.8);
+                carBody.moveTo(-22, -18);
+                carBody.lineTo(22, -18);
+                carBody.lineTo(18, -5);
+                carBody.lineTo(-18, -5);
+                carBody.closePath();
+                carBody.fillPath();
+
+                // Windshield reflection
+                carBody.fillStyle(0xDDFFFF, 0.3);
+                carBody.fillRoundedRect(-20, -16, 20, 8, 2);
+
+                // Rear spoiler - sports car essential!
+                carBody.fillStyle(0xFF6600, 1);
+                carBody.fillRect(-30, -22, 60, 3);
+
+                // Spoiler supports
+                carBody.fillStyle(0x333333, 1);
+                carBody.fillRect(-28, -20, 3, 3);
+                carBody.fillRect(25, -20, 3, 3);
+
+                // Side air intakes
+                carBody.fillStyle(0x222222, 1);
+                carBody.fillRoundedRect(-34, 5, 6, 8, 2);
+                carBody.fillRoundedRect(28, 5, 6, 8, 2);
+
+                // Side mirrors - aerodynamic
+                carBody.fillStyle(0xFF8C00, 1);
+                carBody.fillRoundedRect(-36, -8, 5, 6, 2);
+                carBody.fillRoundedRect(31, -8, 5, 6, 2);
+
+                // Racing stripes!
+                carBody.fillStyle(0xFFFFFF, 0.8);
+                carBody.fillRect(-3, -15, 6, 55);
+
+                // Front splitter/air dam
+                carBody.fillStyle(0x222222, 1);
+                carBody.fillRect(-32, 48, 64, 3);
+
+                // Angular headlights - aggressive look
+                carBody.beginPath();
+                carBody.fillStyle(0xFFFFDD, 1);
+                carBody.moveTo(-28, 43);
+                carBody.lineTo(-22, 43);
+                carBody.lineTo(-20, 47);
+                carBody.lineTo(-26, 47);
+                carBody.closePath();
+                carBody.fillPath();
+
+                carBody.beginPath();
+                carBody.moveTo(22, 43);
+                carBody.lineTo(28, 43);
+                carBody.lineTo(26, 47);
+                carBody.lineTo(20, 47);
+                carBody.closePath();
+                carBody.fillPath();
+
+                // Headlight glow
+                carBody.fillStyle(0xFFFFFF, 0.9);
+                carBody.fillCircle(-24, 45, 2);
+                carBody.fillCircle(24, 45, 2);
+
+                // Rear lights - LED style
+                carBody.fillStyle(0xFF0000, 0.9);
+                carBody.fillRoundedRect(-24, -21, 8, 3, 1);
+                carBody.fillRoundedRect(16, -21, 8, 3, 1);
+
+                // Exhaust pipes
+                carBody.fillStyle(0x333333, 1);
+                carBody.fillCircle(-20, 50, 3);
+                carBody.fillCircle(20, 50, 3);
+
+                // Exhaust inner
+                carBody.fillStyle(0x111111, 1);
+                carBody.fillCircle(-20, 50, 2);
+                carBody.fillCircle(20, 50, 2);
+
+                this.playerCar.add(carBody);
+                this.carGraphics = carBody;
+            }
+
+            generateScenery() {
+                console.log('🌲 Generating scenery for', this.trackLength, 'segments');
+
+                // Clear any existing sprites
+                this.sprites3D.forEach(obj => obj.sprite.destroy());
+                this.sprites3D = [];
+
+                for (let i = 0; i < this.trackLength; i++) {
+                    // MASSIVE TREES - Every single segment!
+                    // Left side
+                    this.addSprite3D(i, -1.1, 'tree', 2.0);   // Very close, very big
+                    this.addSprite3D(i, -1.5, 'tree2', 1.8);
+                    this.addSprite3D(i, -2.0, 'tree3', 1.6);
+
+                    // Right side
+                    this.addSprite3D(i, 1.1, 'tree3', 2.0);   // Very close, very big
+                    this.addSprite3D(i, 1.5, 'tree', 1.8);
+                    this.addSprite3D(i, 2.0, 'tree2', 1.6);
+
+                    // Background forest
+                    if (i % 2 === 0) {
+                        this.addSprite3D(i, -2.5, 'tree2', 1.4);
+                        this.addSprite3D(i, 2.5, 'tree3', 1.4);
+                    }
+
+                    // Giant rocks near road
+                    if (i % 4 === 0) {
+                        const side = (i % 8 === 0) ? -1 : 1;
+                        this.addSprite3D(i, side * 1.0, 'boulder', 1.5);
+                    }
+
+                    // More boulders
+                    if (i % 6 === 2) {
+                        const side = (i % 12 === 2) ? -1 : 1;
+                        this.addSprite3D(i, side * 1.3, 'boulder2', 1.3);
+                    }
+
+                    // AI Cars on road - bigger
+                    if (i % 15 === 5) {
+                        this.addSprite3D(i, -0.3, 'car-red', 1.2);
+                    }
+                    if (i % 15 === 10) {
+                        this.addSprite3D(i, 0.3, 'car-green', 1.2);
+                    }
+                    if (i % 25 === 15) {
+                        this.addSprite3D(i, 0, 'car-army', 1.2);
+                    }
+
+                    // Big turn signs
+                    const segment = this.roadSegments[i];
+                    if (segment && Math.abs(segment.curve) > 0.4) {
+                        const signSide = segment.curve > 0 ? -1.05 : 1.05;
+                        this.addSprite3D(i, signSide, 'turn-sign', 1.5);
+                    }
+                }
+
+                console.log('✅ Created', this.sprites3D.length, '3D objects (HUGE VERSION!)');
+            }
+
+            buildTrack() {
+                // Build track segments with curves and hills
+                for (let i = 0; i < this.trackLength; i++) {
+                    let curve = 0;
+                    let y = 0;
+
+                    // Add curves
+                    if (i > 10 && i < 20) curve = 0.5;
+                    if (i > 25 && i < 35) curve = -0.7;
+                    if (i > 40 && i < 50) curve = 0.3;
+                    if (i > 55 && i < 70) curve = -0.5;
+                    if (i > 75 && i < 85) curve = 0.8;
+
+                    // Add hills
+                    if (i > 15 && i < 25) y = Math.sin((i - 15) / 10 * Math.PI) * 500;
+                    if (i > 45 && i < 60) y = Math.sin((i - 45) / 15 * Math.PI) * 800;
+
+                    this.roadSegments.push({
+                        index: i,
+                        curve: curve,
+                        y: y
+                    });
+                }
+            }
+
+            addSprite3D(segment, offsetX, sprite, scale) {
+                const obj = this.add.sprite(0, 0, sprite);
+                obj.setVisible(false);
+                this.sprites3D.push({
+                    sprite: obj,
+                    segment: segment,
+                    offsetX: offsetX,
+                    scale: scale || 1
+                });
+            }
+
+            project3D(p, cameraX, cameraY, cameraZ) {
+                const width = this.cameras.main.width;
+                const height = this.cameras.main.height;
+                const roadWidth = 2000;
+
+                p.camera = {
+                    x: (p.world.x || 0) - cameraX,
+                    y: (p.world.y || 0) - cameraY,
+                    z: (p.world.z || 0) - cameraZ
+                };
+
+                const scale = this.cameraDepth / p.camera.z;
+
+                p.screen = {
+                    scale: scale,
+                    x: Math.round(width / 2 + scale * p.camera.x * width / 2),
+                    y: Math.round(height / 2 - scale * p.camera.y * height / 2),
+                    w: Math.round(scale * roadWidth * width / 2)
+                };
+            }
+
+            update(time, delta) {
+                const deltaSeconds = delta / 1000;
+
+                // Player input
+                const accel = 500;
+                const decel = 300;
+                const maxSpeed = 1000;
+                const turnSpeed = 3;
+
+                if (this.cursors.up.isDown) {
+                    this.speed = Math.min(this.speed + accel * deltaSeconds, maxSpeed);
+                } else if (this.cursors.down.isDown) {
+                    this.speed = Math.max(this.speed - decel * deltaSeconds, 0);
+                } else {
+                    this.speed = Math.max(this.speed - decel * 0.3 * deltaSeconds, 0);
+                }
+
+                if (this.cursors.left.isDown) {
+                    this.playerX -= turnSpeed * deltaSeconds;
+                    this.playerCar.angle = -8;
+                    this.playerCar.setScale(1, 0.95); // Slight tilt effect
+                }
+                if (this.cursors.right.isDown) {
+                    this.playerX += turnSpeed * deltaSeconds;
+                    this.playerCar.angle = 8;
+                    this.playerCar.setScale(1, 0.95); // Slight tilt effect
+                }
+
+                if (!this.cursors.left.isDown && !this.cursors.right.isDown) {
+                    this.playerCar.angle = 0;
+                    this.playerCar.setScale(1, 1);
+                }
+
+                // Update position
+                this.position += this.speed * deltaSeconds;
+
+                // Keep player on track
+                this.playerX = Math.max(-1, Math.min(1, this.playerX));
+
+                // Render the 3D road
+                this.render3DRoad();
+
+                // Update UI
+                this.speedText.setText('Speed: ' + Math.floor(this.speed) + ' km/h');
+                this.scoreText.setText('Distance: ' + Math.floor(this.position / 10) + ' m');
+            }
+
+            render3DRoad() {
+                const width = this.cameras.main.width;
+                const height = this.cameras.main.height;
+                const drawDistance = 300;
+
+                this.roadGraphics.clear();
+
+                const baseSegment = Math.floor(this.position / this.segmentLength);
+                const basePercent = (this.position % this.segmentLength) / this.segmentLength;
+
+                let x = 0;
+                let dx = 0;
+
+                // Adjust camera height for first person mode
+                const cameraYOffset = this.firstPersonMode ? 800 : 1500;
+
+                // Sky
+                this.roadGraphics.fillStyle(0x72B5E8, 1);
+                this.roadGraphics.fillRect(0, 0, width, height / 2);
+
+                // Ground/Horizon
+                this.roadGraphics.fillStyle(0x5FA05A, 1);
+                this.roadGraphics.fillRect(0, height / 2, width, height / 2);
+
+                // Calculate all segment projections first
+                const projectedSegments = [];
+
+                for (let n = 0; n < drawDistance; n++) {
+                    const segment = this.roadSegments[(baseSegment + n) % this.roadSegments.length];
+                    const z = (n + basePercent) * this.segmentLength;
+
+                    if (z < this.cameraDepth) continue;
+
+                    const camX = this.playerX * 2000;
+                    const camY = cameraYOffset; // Use dynamic camera height
+                    const camZ = this.position;
+
+                    const p = {
+                        world: {
+                            x: x,
+                            y: segment.y,
+                            z: z
+                        },
+                        screen: {}
+                    };
+
+                    this.project3D(p, camX, camY, camZ);
+
+                    x += dx;
+                    dx += segment.curve;
+
+                    if (p.screen.scale > 0 && p.screen.y < height) {
+                        projectedSegments.push({
+                            n: n,
+                            screen: p.screen,
+                            segment: segment
+                        });
+                    }
+                }
+
+                // Draw segments from far to near
+                for (let i = projectedSegments.length - 1; i >= 0; i--) {
+                    const proj = projectedSegments[i];
+                    const p = proj.screen;
+                    const n = proj.n;
+
+                    // Limit Y to prevent rendering issues
+                    const segmentY = Math.max(0, Math.min(height, p.y));
+
+                    if (segmentY >= height) continue;
+
+                    const grassColor = (n + baseSegment) % 2 === 0 ? 0x10AA10 : 0x0E9A0E;
+                    const roadColor = (n + baseSegment) % 2 === 0 ? 0x6B6B6B : 0x555555;
+                    const lineColor = 0xFFFFFF;
+
+                    // Grass
+                    this.roadGraphics.fillStyle(grassColor, 1);
+                    this.roadGraphics.fillRect(0, segmentY, width, height);
+
+                    // Road
+                    const roadW = Math.min(width * 2, Math.max(0, p.w * 0.8));
+                    this.roadGraphics.fillStyle(roadColor, 1);
+                    this.roadGraphics.fillRect(
+                        Math.max(-width, p.x - roadW),
+                        segmentY,
+                        Math.min(width * 3, roadW * 2),
+                        height
+                    );
+
+                    // Road markings (center line)
+                    if (n % 3 === 0 && roadW > 20) {
+                        const lineW = Math.max(2, p.w * 0.03);
+                        this.roadGraphics.fillStyle(lineColor, 1);
+                        this.roadGraphics.fillRect(
+                            p.x - lineW / 2,
+                            segmentY,
+                            lineW,
+                            height
+                        );
+                    }
+
+                    // Road edges (rumble strips)
+                    const edgeW = Math.max(2, p.w * 0.08);
+                    const edgeColor = (n + baseSegment) % 2 === 0 ? 0xFF0000 : 0xFFFFFF;
+                    this.roadGraphics.fillStyle(edgeColor, 1);
+
+                    // Left edge
+                    this.roadGraphics.fillRect(
+                        Math.max(-width, p.x - roadW - edgeW),
+                        segmentY,
+                        edgeW,
+                        height
+                    );
+
+                    // Right edge
+                    this.roadGraphics.fillRect(
+                        Math.min(width * 2, p.x + roadW),
+                        segmentY,
+                        edgeW,
+                        height
+                    );
+                }
+
+                // Render 3D sprites (trees, cars, etc.)
+                let visibleCount = 0;
+                this.sprites3D.forEach(obj => {
+                    // Calculate which segment this object is on relative to current position
+                    const absoluteSegment = obj.segment;
+                    const currentSegment = Math.floor(this.position / this.segmentLength);
+                    const relativeSegment = absoluteSegment - currentSegment;
+
+                    // Only render if within draw distance
+                    if (relativeSegment < 0 || relativeSegment > drawDistance) {
+                        obj.sprite.setVisible(false);
+                        return;
+                    }
+
+                    const segment = this.roadSegments[absoluteSegment % this.roadSegments.length];
+                    const z = relativeSegment * this.segmentLength - (this.position % this.segmentLength);
+
+                    if (z <= 0) {
+                        obj.sprite.setVisible(false);
+                        return;
+                    }
+
+                    const scale = this.cameraDepth / z;
+
+                    if (scale > 0.001 && scale < 10) {
+                        // Find the projected road position for this segment
+                        const projIndex = projectedSegments.findIndex(p => p.n === relativeSegment);
+
+                        let screenX, screenY;
+
+                        if (projIndex >= 0) {
+                            const proj = projectedSegments[projIndex];
+                            // Position object relative to the road - MUCH MORE VISIBLE
+                            screenX = proj.screen.x + obj.offsetX * proj.screen.w * 0.5;
+                            screenY = proj.screen.y - 100 * scale - segment.y * scale * 0.01;
+                        } else {
+                            // Fallback positioning - VISIBLE
+                            screenX = width / 2 + obj.offsetX * 300 * scale;
+                            screenY = height / 2 - 100 * scale - segment.y * scale * 0.01;
+                        }
+
+                        // Keep objects on screen
+                        if (screenY > -200 && screenY < height + 200 && screenX > -200 && screenX < width + 200) {
+                            obj.sprite.setPosition(screenX, screenY);
+
+                            // Make objects bigger
+                            const finalScale = scale * obj.scale * 1.5;
+                            obj.sprite.setScale(finalScale);
+
+                            // Depth: closer = higher (but below player at 1000)
+                            const depth = 50 + (drawDistance - relativeSegment) * 5;
+                            obj.sprite.setDepth(depth);
+                            obj.sprite.setVisible(true);
+                            obj.sprite.setAlpha(1);
+                            obj.sprite.clearTint();
+
+                            visibleCount++;
+                        } else {
+                            obj.sprite.setVisible(false);
+                        }
+                    } else {
+                        obj.sprite.setVisible(false);
+                    }
+                });
+
+                // Debug info every 60 frames
+                if (!this.frameCounter) this.frameCounter = 0;
+                this.frameCounter++;
+                if (this.frameCounter % 60 === 0) {
+                    console.log(`👁️ Visible: ${visibleCount}/${this.sprites3D.length} | Pos: ${Math.floor(this.position)} | Segment: ${baseSegment}`);
+                }
+
+                // Update player car position and visibility based on camera mode
+                const currentSegment = this.roadSegments[baseSegment % this.roadSegments.length];
+                const screenCenterOffset = -currentSegment.curve * 100;
+
+                if (this.firstPersonMode) {
+                    // First person - hide car, show dashboard
+                    this.playerCar.setVisible(false);
+                    this.renderDashboard(width, height);
+                } else {
+                    // Third person - show car
+                    this.playerCar.setVisible(true);
+                    this.playerCar.x = width / 2 + this.playerX * 150 + screenCenterOffset;
+                    // Clear dashboard if exists
+                    if (this.dashboardGraphics) {
+                        this.dashboardGraphics.clear();
+                    }
+                }
+            }
+
+            renderDashboard(width, height) {
+                // Create dashboard graphics if doesn't exist
+                if (!this.dashboardGraphics) {
+                    this.dashboardGraphics = this.add.graphics();
+                    this.dashboardGraphics.setDepth(1500);
+                }
+
+                this.dashboardGraphics.clear();
+
+                // Dashboard base - bottom of screen
+                this.dashboardGraphics.fillStyle(0x2A2A2A, 1);
+                this.dashboardGraphics.fillRect(0, height - 150, width, 150);
+
+                // Dashboard top curve
+                this.dashboardGraphics.fillStyle(0x1A1A1A, 1);
+                this.dashboardGraphics.fillRoundedRect(0, height - 160, width, 20, 10);
+
+                // Steering wheel - bottom center
+                const wheelX = width / 2;
+                const wheelY = height - 50;
+
+                // Steering wheel rim
+                this.dashboardGraphics.lineStyle(8, 0x222222, 1);
+                this.dashboardGraphics.strokeCircle(wheelX, wheelY, 45);
+
+                // Steering wheel spokes
+                this.dashboardGraphics.lineStyle(6, 0x333333, 1);
+                this.dashboardGraphics.lineBetween(wheelX - 30, wheelY, wheelX + 30, wheelY);
+                this.dashboardGraphics.lineBetween(wheelX, wheelY - 30, wheelX, wheelY + 30);
+
+                // Steering wheel center (with logo)
+                this.dashboardGraphics.fillStyle(0xFF8C00, 1);
+                this.dashboardGraphics.fillCircle(wheelX, wheelY, 12);
+
+                // Rotate steering wheel based on player input
+                if (this.cursors.left.isDown) {
+                    // Visual feedback - could animate wheel rotation
+                }
+
+                // Dashboard meters
+                const meterY = height - 120;
+
+                // Speedometer - left side
+                this.dashboardGraphics.lineStyle(3, 0x00FF88, 1);
+                this.dashboardGraphics.strokeCircle(width * 0.25, meterY, 35);
+                this.dashboardGraphics.fillStyle(0x00FF88, 1);
+
+                // Speed needle
+                const speedAngle = (this.speed / 1000) * Math.PI - Math.PI;
+                const needleLength = 30;
+                this.dashboardGraphics.lineStyle(2, 0xFF0000, 1);
+                this.dashboardGraphics.lineBetween(
+                    width * 0.25,
+                    meterY,
+                    width * 0.25 + Math.cos(speedAngle) * needleLength,
+                    meterY + Math.sin(speedAngle) * needleLength
+                );
+
+                // RPM meter - right side
+                this.dashboardGraphics.lineStyle(3, 0xFF8800, 1);
+                this.dashboardGraphics.strokeCircle(width * 0.75, meterY, 35);
+
+                // RPM needle (simulated based on speed)
+                const rpm = (this.speed / 1000) * 8000;
+                const rpmAngle = (rpm / 8000) * Math.PI - Math.PI;
+                this.dashboardGraphics.lineStyle(2, 0xFF0000, 1);
+                this.dashboardGraphics.lineBetween(
+                    width * 0.75,
+                    meterY,
+                    width * 0.75 + Math.cos(rpmAngle) * needleLength,
+                    meterY + Math.sin(rpmAngle) * needleLength
+                );
+
+                // Side mirrors (FPP view)
+                // Left mirror
+                this.dashboardGraphics.fillStyle(0x1A1A1A, 1);
+                this.dashboardGraphics.fillRoundedRect(10, height - 250, 80, 50, 5);
+                this.dashboardGraphics.fillStyle(0x4A4A4A, 0.5);
+                this.dashboardGraphics.fillRoundedRect(15, height - 245, 70, 40, 3);
+
+                // Right mirror
+                this.dashboardGraphics.fillStyle(0x1A1A1A, 1);
+                this.dashboardGraphics.fillRoundedRect(width - 90, height - 250, 80, 50, 5);
+                this.dashboardGraphics.fillStyle(0x4A4A4A, 0.5);
+                this.dashboardGraphics.fillRoundedRect(width - 85, height - 245, 70, 40, 3);
+
+                // Windshield frame edges (for immersion)
+                this.dashboardGraphics.fillStyle(0x1A1A1A, 1);
+                this.dashboardGraphics.fillRect(0, 0, 30, height - 150);
+                this.dashboardGraphics.fillRect(width - 30, 0, 30, height - 150);
+            }
+        }
+
+        const config = {
+            type: Phaser.AUTO,
+            width: 800,
+            height: 600,
+            scene: [GameScene],
+            pixelArt: false,
+            antialias: true
+        };
+
+        const game = new Phaser.Game(config);
+    </script>
+</body>
+</html>
