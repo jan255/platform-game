@@ -3,744 +3,842 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Phaser Drive</title>
-    <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.js"></script>
+    <title>3D Sports Racer</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <style>
         body {
             margin: 0;
             padding: 0;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
+            overflow: hidden;
             background-color: #000;
+            font-family: Arial, sans-serif;
         }
         canvas {
             display: block;
-            margin: 0 auto;
-            image-rendering: pixelated;
+        }
+        #ui {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            font-size: 20px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+            z-index: 100;
+        }
+        #instructions {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            color: yellow;
+            font-size: 16px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+            z-index: 100;
+        }
+        #camera-toggle {
+            position: absolute;
+            top: 80px;
+            right: 20px;
+            padding: 10px 20px;
+            background: rgba(51, 51, 51, 0.8);
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+            border-radius: 5px;
+        }
+        #camera-toggle:hover {
+            background: rgba(85, 85, 85, 0.9);
         }
     </style>
 </head>
 <body>
+    <div id="ui">
+        <div>Speed: <span id="speed">0</span> km/h</div>
+        <div>Distance: <span id="distance">0</span> m</div>
+    </div>
+    <div id="instructions">Arrow Keys: Drive</div>
+    <button id="camera-toggle">Camera: Third Person</button>
+
     <script>
-        class GameScene extends Phaser.Scene {
-            constructor() {
-                super({ key: 'GameScene' });
-                this.roadSegments = [];
-                this.segmentLength = 200;
-                this.trackLength = 100;
-                this.cameraDepth = 0.84;
-                this.playerX = 0;
-                this.speed = 0;
-                this.position = 0;
-                this.curve = 0;
-                this.playerZ = 0;
+        // Wait for Three.js to load
+        window.addEventListener('load', function() {
+            try {
+                if (typeof THREE === 'undefined') {
+                    document.body.innerHTML = '<div style="color: white; padding: 20px;">Error: Three.js failed to load. Please check your internet connection.</div>';
+                    return;
+                }
+
+                console.log('Three.js loaded successfully');
+                initGame();
+            } catch (error) {
+                console.error('Error initializing game:', error);
+                document.body.innerHTML = '<div style="color: white; padding: 20px;">Error: ' + error.message + '</div>';
             }
+        });
 
-            preload() {
-                // Load assets
-                this.load.image('car-yellow', 'assets/car-yellow.png');
-                this.load.image('car-red', 'assets/car-red.png');
-                this.load.image('car-green', 'assets/car-green.png');
-                this.load.image('car-army', 'assets/car-army.png');
-                this.load.image('tree', 'assets/tree.png');
-                this.load.image('tree2', 'assets/tree2.png');
-                this.load.image('tree3', 'assets/tree3.png');
-                this.load.image('boulder', 'assets/boulder.png');
-                this.load.image('boulder2', 'assets/boulder2.png');
-                this.load.image('turn-sign', 'assets/turn-sign.png');
-            }
+        function initGame() {
+            // Scene setup
+            const scene = new THREE.Scene();
 
-            create() {
-                const width = this.cameras.main.width;
-                const height = this.cameras.main.height;
+            // Realistic sky gradient
+            const skyColor = new THREE.Color(0x87CEEB);
+            const horizonColor = new THREE.Color(0xE0F6FF);
+            scene.background = skyColor;
+            scene.fog = new THREE.Fog(horizonColor, 100, 300);
 
-                // Create graphics for road
-                this.roadGraphics = this.add.graphics();
-                this.roadGraphics.setDepth(0); // Road should be behind everything
+            // Camera
+            const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 5, 15);
 
-                // Build the track
-                this.buildTrack();
+            // Renderer
+            const renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            document.body.appendChild(renderer.domElement);
 
-                // Player car - custom drawn
-                this.playerCar = this.add.container(width / 2, height - 100);
-                this.createPlayerCar();
-                this.playerCar.setDepth(1000);
+        // Realistic lighting - like sunny day
+        const ambientLight = new THREE.AmbientLight(0xCCDDFF, 0.5);
+        scene.add(ambientLight);
 
-                // Initialize sprites array
-                this.sprites3D = [];
+        // Sun light
+        const sunLight = new THREE.DirectionalLight(0xFFFFDD, 1.2);
+        sunLight.position.set(100, 150, 100);
+        sunLight.castShadow = true;
+        sunLight.shadow.mapSize.width = 2048;
+        sunLight.shadow.mapSize.height = 2048;
+        sunLight.shadow.camera.left = -100;
+        sunLight.shadow.camera.right = 100;
+        sunLight.shadow.camera.top = 100;
+        sunLight.shadow.camera.bottom = -100;
+        sunLight.shadow.camera.near = 0.5;
+        sunLight.shadow.camera.far = 500;
+        scene.add(sunLight);
 
-                // Generate scenery objects along the track (must be after buildTrack)
-                this.generateScenery();
+        // Hemisphere light for more realistic sky lighting
+        const hemisphereLight = new THREE.HemisphereLight(0x87CEEB, 0x7A8B5A, 0.3);
+        scene.add(hemisphereLight);
 
-                // UI
-                this.speedText = this.add.text(16, 16, 'Speed: 0 km/h', {
-                    fontSize: '28px',
-                    fill: '#fff',
-                    stroke: '#000',
-                    strokeThickness: 4,
-                    fontFamily: 'Arial'
-                }).setDepth(2000);
+        // Ground/Road - Realistic asphalt with details
+        const roadWidth = 20;
+        const roadLength = 500;
+        const roadGeometry = new THREE.PlaneGeometry(roadWidth, roadLength, 50, 100);
+        const roadMaterial = new THREE.MeshStandardMaterial({
+            color: 0x2C2C2C,
+            roughness: 0.95,
+            metalness: 0.05
+        });
+        const road = new THREE.Mesh(roadGeometry, roadMaterial);
+        road.rotation.x = -Math.PI / 2;
+        road.receiveShadow = true;
+        scene.add(road);
 
-                this.scoreText = this.add.text(16, 50, 'Distance: 0 m', {
-                    fontSize: '24px',
-                    fill: '#fff',
-                    stroke: '#000',
-                    strokeThickness: 4,
-                    fontFamily: 'Arial'
-                }).setDepth(2000);
 
-                this.instructionText = this.add.text(width / 2, 16, 'Arrow Keys: Steer & Accelerate', {
-                    fontSize: '20px',
-                    fill: '#ffff00',
-                    stroke: '#000',
-                    strokeThickness: 3,
-                    fontFamily: 'Arial'
-                }).setOrigin(0.5, 0).setDepth(2000);
+        // Road curve function - straight road only
+        function getRoadCurve(z) {
+            return 0; // No curves, straight road
+        }
 
-                // Input
-                this.cursors = this.input.keyboard.createCursorKeys();
+        // Road markings - realistic lane dividers
+        const markingGeometry = new THREE.PlaneGeometry(0.3, 8);
+        const markingMaterial = new THREE.MeshBasicMaterial({ color: 0xFFFFFF });
+        const markings = [];
+        for (let i = -800; i < 300; i += 20) {
+            const marking = new THREE.Mesh(markingGeometry, markingMaterial);
+            marking.rotation.x = -Math.PI / 2;
+            marking.position.set(getRoadCurve(i), 0.02, i);
+            scene.add(marking);
+            markings.push({ mesh: marking, originalZ: i });
+        }
 
-                // Camera mode toggle button - top right
-                this.firstPersonMode = false;
 
-                const buttonBg = this.add.rectangle(width - 70, 30, 120, 50, 0x333333, 0.8);
-                buttonBg.setDepth(2000);
-                buttonBg.setInteractive({ useHandCursor: true });
+        // Grass on sides - realistic green
+        const grassGeometry = new THREE.PlaneGeometry(200, roadLength);
+        const grassMaterial = new THREE.MeshStandardMaterial({
+            color: 0x4A7C2C,
+            roughness: 0.95,
+            metalness: 0.0
+        });
 
-                this.cameraButtonText = this.add.text(width - 70, 30, '👁️ FPP', {
-                    fontSize: '20px',
-                    fill: '#fff',
-                    fontFamily: 'Arial'
-                }).setOrigin(0.5).setDepth(2001);
+        const grassLeft = new THREE.Mesh(grassGeometry, grassMaterial);
+        grassLeft.rotation.x = -Math.PI / 2;
+        grassLeft.position.x = -110;
+        grassLeft.receiveShadow = true;
+        scene.add(grassLeft);
 
-                buttonBg.on('pointerdown', () => {
-                    this.firstPersonMode = !this.firstPersonMode;
-                    if (this.firstPersonMode) {
-                        this.cameraButtonText.setText('🚗 TPP');
-                    } else {
-                        this.cameraButtonText.setText('👁️ FPP');
-                    }
+        const grassRight = new THREE.Mesh(grassGeometry, grassMaterial);
+        grassRight.rotation.x = -Math.PI / 2;
+        grassRight.position.x = 110;
+        grassRight.receiveShadow = true;
+        scene.add(grassRight);
+
+        // Player car - Sports Car Design with realistic colors
+        const carGroup = new THREE.Group();
+
+        // Main car color - Matte Black
+        const playerCarColor = 0x1A1A1A;
+        const accentColor = 0xFF0000; // Red accents
+
+        // Lower sports car body - wider and lower
+        const bodyGeometry = new THREE.BoxGeometry(2.4, 0.6, 5);
+        const bodyMaterial = new THREE.MeshStandardMaterial({
+            color: playerCarColor,
+            metalness: 0.6,
+            roughness: 0.4
+        });
+        const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+        body.position.y = 0.5;
+        body.castShadow = true;
+        carGroup.add(body);
+
+        // Front nose (aerodynamic)
+        const noseGeometry = new THREE.BoxGeometry(2, 0.4, 1.2);
+        const nose = new THREE.Mesh(noseGeometry, bodyMaterial);
+        nose.position.set(0, 0.3, 3);
+        nose.castShadow = true;
+        carGroup.add(nose);
+
+        // Low profile roof (coupe style) - carbon fiber look
+        const roofGeometry = new THREE.BoxGeometry(2, 0.5, 2.5);
+        const roofMaterial = new THREE.MeshStandardMaterial({
+            color: 0x0A0A0A,
+            metalness: 0.8,
+            roughness: 0.2
+        });
+        const roof = new THREE.Mesh(roofGeometry, roofMaterial);
+        roof.position.y = 1;
+        roof.position.z = -0.5;
+        roof.castShadow = true;
+        carGroup.add(roof);
+
+        // Angled windshield
+        const windshieldGeometry = new THREE.BoxGeometry(1.9, 0.5, 0.1);
+        const windshieldMaterial = new THREE.MeshStandardMaterial({
+            color: 0x1A2A3A,
+            transparent: true,
+            opacity: 0.6,
+            metalness: 0.5
+        });
+        const windshield = new THREE.Mesh(windshieldGeometry, windshieldMaterial);
+        windshield.position.y = 1;
+        windshield.position.z = 0.9;
+        windshield.rotation.x = -0.3;
+        carGroup.add(windshield);
+
+        // Large rear spoiler (GT style) - Red accent
+        const spoilerGeometry = new THREE.BoxGeometry(2.2, 0.15, 0.8);
+        const spoilerMaterial = new THREE.MeshStandardMaterial({
+            color: accentColor,
+            metalness: 0.7,
+            roughness: 0.3
+        });
+        const spoiler = new THREE.Mesh(spoilerGeometry, spoilerMaterial);
+        spoiler.position.y = 1.3;
+        spoiler.position.z = -2.6;
+        spoiler.castShadow = true;
+        carGroup.add(spoiler);
+
+        // Spoiler supports
+        const supportGeometry = new THREE.BoxGeometry(0.1, 0.5, 0.1);
+        const supportLeft = new THREE.Mesh(supportGeometry, new THREE.MeshStandardMaterial({ color: 0x2A2A2A }));
+        supportLeft.position.set(-0.9, 0.85, -2.6);
+        carGroup.add(supportLeft);
+
+        const supportRight = new THREE.Mesh(supportGeometry, new THREE.MeshStandardMaterial({ color: 0x2A2A2A }));
+        supportRight.position.set(0.9, 0.85, -2.6);
+        carGroup.add(supportRight);
+
+        // Side skirts - Red accents
+        const skirtGeometry = new THREE.BoxGeometry(0.2, 0.3, 4.5);
+        const skirtLeft = new THREE.Mesh(skirtGeometry, spoilerMaterial);
+        skirtLeft.position.set(-1.2, 0.25, 0);
+        skirtLeft.castShadow = true;
+        carGroup.add(skirtLeft);
+
+        const skirtRight = new THREE.Mesh(skirtGeometry, spoilerMaterial);
+        skirtRight.position.set(1.2, 0.25, 0);
+        skirtRight.castShadow = true;
+        carGroup.add(skirtRight);
+
+        // Wide performance wheels
+        const wheelGeometry = new THREE.CylinderGeometry(0.45, 0.45, 0.4, 16);
+        const wheelMaterial = new THREE.MeshStandardMaterial({ color: 0x1a1a1a });
+
+        const wheels = [];
+        const wheelPositions = [
+            [-1.3, 0.45, 1.5],
+            [1.3, 0.45, 1.5],
+            [-1.3, 0.45, -1.5],
+            [1.3, 0.45, -1.5]
+        ];
+
+        wheelPositions.forEach(pos => {
+            const wheel = new THREE.Mesh(wheelGeometry, wheelMaterial);
+            wheel.rotation.z = Math.PI / 2;
+            wheel.position.set(...pos);
+            wheel.castShadow = true;
+            carGroup.add(wheel);
+            wheels.push(wheel);
+
+            // Racing rims - Red accents
+            const rimGeometry = new THREE.CylinderGeometry(0.3, 0.3, 0.42, 16);
+            const rimMaterial = new THREE.MeshStandardMaterial({
+                color: accentColor,
+                metalness: 0.9,
+                roughness: 0.1
+            });
+            const rim = new THREE.Mesh(rimGeometry, rimMaterial);
+            rim.rotation.z = Math.PI / 2;
+            rim.position.set(...pos);
+            carGroup.add(rim);
+        });
+
+        // Racing stripes - Red dual stripes
+        const stripeGeometry = new THREE.BoxGeometry(0.3, 0.62, 5.02);
+        const stripeMaterial = new THREE.MeshStandardMaterial({
+            color: accentColor,
+            metalness: 0.5,
+            roughness: 0.5
+        });
+        const stripe1 = new THREE.Mesh(stripeGeometry, stripeMaterial);
+        stripe1.position.set(-0.4, 0.5, 0);
+        carGroup.add(stripe1);
+
+        const stripe2 = new THREE.Mesh(stripeGeometry, stripeMaterial);
+        stripe2.position.set(0.4, 0.5, 0);
+        carGroup.add(stripe2);
+
+        // Headlights
+        const headlightGeometry = new THREE.BoxGeometry(0.4, 0.25, 0.1);
+        const headlightMaterial = new THREE.MeshStandardMaterial({
+            color: 0xFFFFDD,
+            emissive: 0xFFFFAA,
+            emissiveIntensity: 0.5
+        });
+        const headlightLeft = new THREE.Mesh(headlightGeometry, headlightMaterial);
+        headlightLeft.position.set(-0.7, 0.4, 3.6);
+        carGroup.add(headlightLeft);
+
+        const headlightRight = new THREE.Mesh(headlightGeometry, headlightMaterial);
+        headlightRight.position.set(0.7, 0.4, 3.6);
+        carGroup.add(headlightRight);
+
+        // Tail lights
+        const taillightGeometry = new THREE.BoxGeometry(0.6, 0.2, 0.1);
+        const taillightMaterial = new THREE.MeshStandardMaterial({
+            color: 0xFF0000,
+            emissive: 0x880000,
+            emissiveIntensity: 0.3
+        });
+        const taillightLeft = new THREE.Mesh(taillightGeometry, taillightMaterial);
+        taillightLeft.position.set(-0.8, 0.6, -2.55);
+        carGroup.add(taillightLeft);
+
+        const taillightRight = new THREE.Mesh(taillightGeometry, taillightMaterial);
+        taillightRight.position.set(0.8, 0.6, -2.55);
+        carGroup.add(taillightRight);
+
+        carGroup.position.set(0, 0.6, 0);
+        carGroup.rotation.y = Math.PI; // Face forward
+        scene.add(carGroup);
+
+        // Cockpit elements (only visible in first person)
+        const cockpitGroup = new THREE.Group();
+
+        // Dashboard
+        const dashboardGeometry = new THREE.BoxGeometry(3, 0.3, 1);
+        const dashboardMaterial = new THREE.MeshStandardMaterial({ color: 0x2A2A2A });
+        const dashboard = new THREE.Mesh(dashboardGeometry, dashboardMaterial);
+        dashboard.position.set(0, -0.5, -1.5);
+        cockpitGroup.add(dashboard);
+
+        // Steering wheel rim
+        const steeringWheelGeometry = new THREE.TorusGeometry(0.35, 0.04, 16, 32);
+        const steeringWheelMaterial = new THREE.MeshStandardMaterial({ color: 0x1A1A1A });
+        const steeringWheel = new THREE.Mesh(steeringWheelGeometry, steeringWheelMaterial);
+        steeringWheel.position.set(0, -0.7, -1);
+        steeringWheel.rotation.x = Math.PI / 6; // Angle the wheel
+        cockpitGroup.add(steeringWheel);
+
+        // Steering wheel spokes
+        const spokeGeometry = new THREE.BoxGeometry(0.05, 0.3, 0.05);
+        const spokeMaterial = new THREE.MeshStandardMaterial({ color: 0x2A2A2A });
+
+        const spoke1 = new THREE.Mesh(spokeGeometry, spokeMaterial);
+        spoke1.position.set(0, -0.7, -1);
+        spoke1.rotation.x = Math.PI / 6;
+        cockpitGroup.add(spoke1);
+
+        const spoke2 = new THREE.Mesh(spokeGeometry, spokeMaterial);
+        spoke2.position.set(0, -0.7, -1);
+        spoke2.rotation.x = Math.PI / 6;
+        spoke2.rotation.z = Math.PI / 2;
+        cockpitGroup.add(spoke2);
+
+        // Steering wheel center (logo area)
+        const centerGeometry = new THREE.CylinderGeometry(0.08, 0.08, 0.05, 16);
+        const centerMaterial = new THREE.MeshStandardMaterial({ color: 0xFF8C00 });
+        const steeringCenter = new THREE.Mesh(centerGeometry, centerMaterial);
+        steeringCenter.position.set(0, -0.7, -1);
+        steeringCenter.rotation.x = Math.PI / 2;
+        steeringCenter.rotation.z = -Math.PI / 6;
+        cockpitGroup.add(steeringCenter);
+
+        // Side mirrors
+        // Left mirror
+        const mirrorGeometry = new THREE.BoxGeometry(0.15, 0.1, 0.08);
+        const mirrorMaterial = new THREE.MeshStandardMaterial({ color: 0x1A1A1A });
+        const leftMirror = new THREE.Mesh(mirrorGeometry, mirrorMaterial);
+        leftMirror.position.set(-1.2, 0.2, -0.5);
+        cockpitGroup.add(leftMirror);
+
+        // Left mirror glass
+        const mirrorGlassGeometry = new THREE.PlaneGeometry(0.12, 0.08);
+        const mirrorGlassMaterial = new THREE.MeshStandardMaterial({
+            color: 0x4A4A4A,
+            metalness: 0.9,
+            roughness: 0.1
+        });
+        const leftMirrorGlass = new THREE.Mesh(mirrorGlassGeometry, mirrorGlassMaterial);
+        leftMirrorGlass.position.set(-1.19, 0.2, -0.5);
+        leftMirrorGlass.rotation.y = -Math.PI / 2;
+        cockpitGroup.add(leftMirrorGlass);
+
+        // Right mirror
+        const rightMirror = new THREE.Mesh(mirrorGeometry, mirrorMaterial);
+        rightMirror.position.set(1.2, 0.2, -0.5);
+        cockpitGroup.add(rightMirror);
+
+        // Right mirror glass
+        const rightMirrorGlass = new THREE.Mesh(mirrorGlassGeometry, mirrorGlassMaterial);
+        rightMirrorGlass.position.set(1.19, 0.2, -0.5);
+        rightMirrorGlass.rotation.y = Math.PI / 2;
+        cockpitGroup.add(rightMirrorGlass);
+
+        // Windshield frame (A-pillars)
+        const pillarGeometry = new THREE.BoxGeometry(0.08, 1.2, 0.1);
+        const pillarMaterial = new THREE.MeshStandardMaterial({ color: 0x1A1A1A });
+
+        const leftPillar = new THREE.Mesh(pillarGeometry, pillarMaterial);
+        leftPillar.position.set(-1, 0.3, -1);
+        leftPillar.rotation.z = -0.2;
+        cockpitGroup.add(leftPillar);
+
+        const rightPillar = new THREE.Mesh(pillarGeometry, pillarMaterial);
+        rightPillar.position.set(1, 0.3, -1);
+        rightPillar.rotation.z = 0.2;
+        cockpitGroup.add(rightPillar);
+
+        // Gauge cluster area
+        const gaugeClusterGeometry = new THREE.BoxGeometry(0.8, 0.25, 0.15);
+        const gaugeClusterMaterial = new THREE.MeshStandardMaterial({ color: 0x1A1A1A });
+        const gaugeCluster = new THREE.Mesh(gaugeClusterGeometry, gaugeClusterMaterial);
+        gaugeCluster.position.set(0, -0.35, -1.6);
+        gaugeCluster.rotation.x = -0.3;
+        cockpitGroup.add(gaugeCluster);
+
+        // Speedometer circle
+        const speedometerGeometry = new THREE.TorusGeometry(0.12, 0.015, 16, 32);
+        const speedometerMaterial = new THREE.MeshStandardMaterial({ color: 0x00FF88 });
+        const speedometer = new THREE.Mesh(speedometerGeometry, speedometerMaterial);
+        speedometer.position.set(-0.3, -0.35, -1.55);
+        speedometer.rotation.x = -0.3;
+        cockpitGroup.add(speedometer);
+
+        // RPM meter circle
+        const rpmMeter = new THREE.Mesh(speedometerGeometry, new THREE.MeshStandardMaterial({ color: 0xFF8800 }));
+        rpmMeter.position.set(0.3, -0.35, -1.55);
+        rpmMeter.rotation.x = -0.3;
+        cockpitGroup.add(rpmMeter);
+
+        cockpitGroup.visible = false; // Hidden by default
+        scene.add(cockpitGroup);
+
+        // Trees - Simple realistic trees
+        const trees = [];
+        const treeGeometry = new THREE.ConeGeometry(1.5, 5, 8);
+        const treeMaterial = new THREE.MeshStandardMaterial({
+            color: 0x2D6B22,
+            roughness: 0.9
+        });
+        const trunkGeometry = new THREE.CylinderGeometry(0.3, 0.35, 2);
+        const trunkMaterial = new THREE.MeshStandardMaterial({
+            color: 0x4A3728,
+            roughness: 0.95
+        });
+
+        for (let i = 0; i < 50; i++) {
+            const treeGroup = new THREE.Group();
+
+            const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
+            trunk.position.y = 1;
+            trunk.castShadow = true;
+            treeGroup.add(trunk);
+
+            const leaves = new THREE.Mesh(treeGeometry, treeMaterial);
+            leaves.position.y = 3.5;
+            leaves.castShadow = true;
+            treeGroup.add(leaves);
+
+            const side = Math.random() > 0.5 ? 1 : -1;
+            const offset = 15 + Math.random() * 30;
+            const zPos = -50 - i * 15 + Math.random() * 10;
+
+            treeGroup.userData.side = side;
+            treeGroup.userData.offset = offset;
+            treeGroup.position.set(
+                getRoadCurve(zPos) + side * offset,
+                0,
+                zPos
+            );
+            scene.add(treeGroup);
+            trees.push(treeGroup);
+        }
+
+        // AI cars - Sports Cars with realistic colors
+        const aiCars = [];
+        const aiCarConfigs = [
+            { body: 0xFFFFFF, accent: 0x0066FF }, // White with blue
+            { body: 0xC0C0C0, accent: 0x000000 }, // Silver with black
+            { body: 0x8B0000, accent: 0xFFD700 }, // Dark red with gold
+            { body: 0x1C1C1C, accent: 0x00FF00 }, // Dark grey with green
+            { body: 0x003366, accent: 0xFFFFFF }  // Navy blue with white
+        ];
+
+        for (let i = 0; i < 5; i++) {
+            const aiCarGroup = new THREE.Group();
+            const config = aiCarConfigs[i % aiCarConfigs.length];
+            const carColor = config.body;
+            const carAccent = config.accent;
+
+            // AI car body
+            const aiBody = new THREE.Mesh(bodyGeometry, new THREE.MeshStandardMaterial({
+                color: carColor
+            }));
+            aiBody.position.y = 0.5;
+            aiBody.castShadow = true;
+            aiCarGroup.add(aiBody);
+
+            // AI car nose
+            const aiNose = new THREE.Mesh(noseGeometry, new THREE.MeshStandardMaterial({
+                color: carColor
+            }));
+            aiNose.position.set(0, 0.3, 3);
+            aiNose.castShadow = true;
+            aiCarGroup.add(aiNose);
+
+            // AI car roof
+            const aiRoof = new THREE.Mesh(roofGeometry, new THREE.MeshStandardMaterial({
+                color: carColor
+            }));
+            aiRoof.position.y = 1;
+            aiRoof.position.z = -0.5;
+            aiRoof.castShadow = true;
+            aiCarGroup.add(aiRoof);
+
+            // AI car spoiler - accent color
+            const aiSpoiler = new THREE.Mesh(spoilerGeometry, new THREE.MeshStandardMaterial({
+                color: carAccent,
+                metalness: 0.7,
+                roughness: 0.3
+            }));
+            aiSpoiler.position.y = 1.3;
+            aiSpoiler.position.z = -2.6;
+            aiSpoiler.castShadow = true;
+            aiCarGroup.add(aiSpoiler);
+
+            // AI car side skirts - accent color
+            const aiSkirtLeft = new THREE.Mesh(skirtGeometry, new THREE.MeshStandardMaterial({
+                color: carAccent,
+                metalness: 0.7,
+                roughness: 0.3
+            }));
+            aiSkirtLeft.position.set(-1.2, 0.25, 0);
+            aiSkirtLeft.castShadow = true;
+            aiCarGroup.add(aiSkirtLeft);
+
+            const aiSkirtRight = new THREE.Mesh(skirtGeometry, new THREE.MeshStandardMaterial({
+                color: carAccent,
+                metalness: 0.7,
+                roughness: 0.3
+            }));
+            aiSkirtRight.position.set(1.2, 0.25, 0);
+            aiSkirtRight.castShadow = true;
+            aiCarGroup.add(aiSkirtRight);
+
+            // AI car racing stripes - accent color
+            const aiStripe1 = new THREE.Mesh(stripeGeometry, new THREE.MeshStandardMaterial({
+                color: carAccent,
+                metalness: 0.5,
+                roughness: 0.5
+            }));
+            aiStripe1.position.set(-0.4, 0.5, 0);
+            aiCarGroup.add(aiStripe1);
+
+            const aiStripe2 = new THREE.Mesh(stripeGeometry, new THREE.MeshStandardMaterial({
+                color: carAccent,
+                metalness: 0.5,
+                roughness: 0.5
+            }));
+            aiStripe2.position.set(0.4, 0.5, 0);
+            aiCarGroup.add(aiStripe2);
+
+            // AI car wheels
+            wheelPositions.forEach(pos => {
+                const wheel = new THREE.Mesh(wheelGeometry, wheelMaterial);
+                wheel.rotation.z = Math.PI / 2;
+                wheel.position.set(...pos);
+                wheel.castShadow = true;
+                aiCarGroup.add(wheel);
+
+                // AI car rims - accent color
+                const rimGeometry = new THREE.CylinderGeometry(0.3, 0.3, 0.42, 16);
+                const rimMaterial = new THREE.MeshStandardMaterial({
+                    color: carAccent,
+                    metalness: 0.9,
+                    roughness: 0.1
                 });
+                const rim = new THREE.Mesh(rimGeometry, rimMaterial);
+                rim.rotation.z = Math.PI / 2;
+                rim.position.set(...pos);
+                aiCarGroup.add(rim);
+            });
 
-                buttonBg.on('pointerover', () => {
-                    buttonBg.setFillStyle(0x555555, 0.9);
-                });
+            const laneOffset = (Math.random() - 0.5) * 8;
+            const zPos = -30 - i * 40;
+            aiCarGroup.position.set(getRoadCurve(zPos) + laneOffset, 0, zPos);
+            aiCarGroup.rotation.y = Math.PI; // Rotate 180 degrees to face forward
+            scene.add(aiCarGroup);
+            aiCars.push({
+                group: aiCarGroup,
+                speed: 0.05 + Math.random() * 0.1,
+                laneOffset: laneOffset
+            });
+        }
 
-                buttonBg.on('pointerout', () => {
-                    buttonBg.setFillStyle(0x333333, 0.8);
-                });
+        // Game state - Realistic physics
+        let speed = 0;
+        let position = 0;
+        let playerX = 0;
+        let velocity = 0; // Current velocity for realistic acceleration
+        const maxSpeed = 3.5; // Higher max speed
+        const acceleration = 0.08; // Faster acceleration
+        const deceleration = 0.03; // Realistic deceleration
+        const brakeForce = 0.12; // Strong brakes
+        const turnSpeed = 0.12; // Slightly slower turning for realism
+        const drag = 0.98; // Air resistance
+        let firstPersonMode = false;
+
+        // Input
+        const keys = {
+            ArrowUp: false,
+            ArrowDown: false,
+            ArrowLeft: false,
+            ArrowRight: false
+        };
+
+        document.addEventListener('keydown', (e) => {
+            if (keys.hasOwnProperty(e.code)) {
+                keys[e.code] = true;
             }
+        });
 
-            createPlayerCar() {
-                const carBody = this.add.graphics();
-
-                // Shadow - elongated for sports car
-                carBody.fillStyle(0x000000, 0.3);
-                carBody.fillEllipse(0, 60, 70, 20);
-
-                // Wide performance tires
-                carBody.fillStyle(0x1a1a1a, 1);
-                carBody.fillRoundedRect(-32, 20, 18, 30, 4);
-                carBody.fillRoundedRect(14, 20, 18, 30, 4);
-
-                // Racing rims - wide
-                carBody.fillStyle(0xAA5500, 1); // Gold/bronze rims
-                carBody.fillRoundedRect(-29, 24, 12, 22, 3);
-                carBody.fillRoundedRect(17, 24, 12, 22, 3);
-
-                // Rim spokes
-                carBody.fillStyle(0xDD8800, 1);
-                carBody.fillRect(-27, 28, 8, 3);
-                carBody.fillRect(-27, 37, 8, 3);
-                carBody.fillRect(19, 28, 8, 3);
-                carBody.fillRect(19, 37, 8, 3);
-
-                // Lower body/side skirts - aerodynamic
-                carBody.fillStyle(0xFF6600, 1);
-                carBody.fillRoundedRect(-35, 15, 70, 35, 4);
-
-                // Main body - lower and wider sports car profile
-                carBody.fillStyle(0xFF8C00, 1);
-                carBody.fillRoundedRect(-35, -5, 70, 30, 8);
-
-                // Hood - long and sleek
-                carBody.fillStyle(0xFFAA33, 1);
-                carBody.fillRoundedRect(-33, 0, 66, 25, 6);
-
-                // Hood air vents
-                carBody.fillStyle(0x333333, 1);
-                carBody.fillRect(-20, 15, 8, 3);
-                carBody.fillRect(12, 15, 8, 3);
-
-                // Roof - low profile (coupe style)
-                carBody.fillStyle(0xFF7700, 1);
-                carBody.fillRoundedRect(-25, -20, 50, 18, 8);
-
-                // Windshield - angled back (sporty)
-                carBody.beginPath();
-                carBody.fillStyle(0x2A4A6A, 0.8);
-                carBody.moveTo(-22, -18);
-                carBody.lineTo(22, -18);
-                carBody.lineTo(18, -5);
-                carBody.lineTo(-18, -5);
-                carBody.closePath();
-                carBody.fillPath();
-
-                // Windshield reflection
-                carBody.fillStyle(0xDDFFFF, 0.3);
-                carBody.fillRoundedRect(-20, -16, 20, 8, 2);
-
-                // Rear spoiler - sports car essential!
-                carBody.fillStyle(0xFF6600, 1);
-                carBody.fillRect(-30, -22, 60, 3);
-
-                // Spoiler supports
-                carBody.fillStyle(0x333333, 1);
-                carBody.fillRect(-28, -20, 3, 3);
-                carBody.fillRect(25, -20, 3, 3);
-
-                // Side air intakes
-                carBody.fillStyle(0x222222, 1);
-                carBody.fillRoundedRect(-34, 5, 6, 8, 2);
-                carBody.fillRoundedRect(28, 5, 6, 8, 2);
-
-                // Side mirrors - aerodynamic
-                carBody.fillStyle(0xFF8C00, 1);
-                carBody.fillRoundedRect(-36, -8, 5, 6, 2);
-                carBody.fillRoundedRect(31, -8, 5, 6, 2);
-
-                // Racing stripes!
-                carBody.fillStyle(0xFFFFFF, 0.8);
-                carBody.fillRect(-3, -15, 6, 55);
-
-                // Front splitter/air dam
-                carBody.fillStyle(0x222222, 1);
-                carBody.fillRect(-32, 48, 64, 3);
-
-                // Angular headlights - aggressive look
-                carBody.beginPath();
-                carBody.fillStyle(0xFFFFDD, 1);
-                carBody.moveTo(-28, 43);
-                carBody.lineTo(-22, 43);
-                carBody.lineTo(-20, 47);
-                carBody.lineTo(-26, 47);
-                carBody.closePath();
-                carBody.fillPath();
-
-                carBody.beginPath();
-                carBody.moveTo(22, 43);
-                carBody.lineTo(28, 43);
-                carBody.lineTo(26, 47);
-                carBody.lineTo(20, 47);
-                carBody.closePath();
-                carBody.fillPath();
-
-                // Headlight glow
-                carBody.fillStyle(0xFFFFFF, 0.9);
-                carBody.fillCircle(-24, 45, 2);
-                carBody.fillCircle(24, 45, 2);
-
-                // Rear lights - LED style
-                carBody.fillStyle(0xFF0000, 0.9);
-                carBody.fillRoundedRect(-24, -21, 8, 3, 1);
-                carBody.fillRoundedRect(16, -21, 8, 3, 1);
-
-                // Exhaust pipes
-                carBody.fillStyle(0x333333, 1);
-                carBody.fillCircle(-20, 50, 3);
-                carBody.fillCircle(20, 50, 3);
-
-                // Exhaust inner
-                carBody.fillStyle(0x111111, 1);
-                carBody.fillCircle(-20, 50, 2);
-                carBody.fillCircle(20, 50, 2);
-
-                this.playerCar.add(carBody);
-                this.carGraphics = carBody;
+        document.addEventListener('keyup', (e) => {
+            if (keys.hasOwnProperty(e.code)) {
+                keys[e.code] = false;
             }
-
-            generateScenery() {
-                console.log('🌲 Generating scenery for', this.trackLength, 'segments');
-
-                // Clear any existing sprites
-                this.sprites3D.forEach(obj => obj.sprite.destroy());
-                this.sprites3D = [];
-
-                for (let i = 0; i < this.trackLength; i++) {
-                    // MASSIVE TREES - Every single segment!
-                    // Left side
-                    this.addSprite3D(i, -1.1, 'tree', 2.0);   // Very close, very big
-                    this.addSprite3D(i, -1.5, 'tree2', 1.8);
-                    this.addSprite3D(i, -2.0, 'tree3', 1.6);
-
-                    // Right side
-                    this.addSprite3D(i, 1.1, 'tree3', 2.0);   // Very close, very big
-                    this.addSprite3D(i, 1.5, 'tree', 1.8);
-                    this.addSprite3D(i, 2.0, 'tree2', 1.6);
-
-                    // Background forest
-                    if (i % 2 === 0) {
-                        this.addSprite3D(i, -2.5, 'tree2', 1.4);
-                        this.addSprite3D(i, 2.5, 'tree3', 1.4);
-                    }
-
-                    // Giant rocks near road
-                    if (i % 4 === 0) {
-                        const side = (i % 8 === 0) ? -1 : 1;
-                        this.addSprite3D(i, side * 1.0, 'boulder', 1.5);
-                    }
-
-                    // More boulders
-                    if (i % 6 === 2) {
-                        const side = (i % 12 === 2) ? -1 : 1;
-                        this.addSprite3D(i, side * 1.3, 'boulder2', 1.3);
-                    }
-
-                    // AI Cars on road - bigger
-                    if (i % 15 === 5) {
-                        this.addSprite3D(i, -0.3, 'car-red', 1.2);
-                    }
-                    if (i % 15 === 10) {
-                        this.addSprite3D(i, 0.3, 'car-green', 1.2);
-                    }
-                    if (i % 25 === 15) {
-                        this.addSprite3D(i, 0, 'car-army', 1.2);
-                    }
-
-                    // Big turn signs
-                    const segment = this.roadSegments[i];
-                    if (segment && Math.abs(segment.curve) > 0.4) {
-                        const signSide = segment.curve > 0 ? -1.05 : 1.05;
-                        this.addSprite3D(i, signSide, 'turn-sign', 1.5);
-                    }
-                }
-
-                console.log('✅ Created', this.sprites3D.length, '3D objects (HUGE VERSION!)');
-            }
-
-            buildTrack() {
-                // Build track segments with curves and hills
-                for (let i = 0; i < this.trackLength; i++) {
-                    let curve = 0;
-                    let y = 0;
-
-                    // Add curves
-                    if (i > 10 && i < 20) curve = 0.5;
-                    if (i > 25 && i < 35) curve = -0.7;
-                    if (i > 40 && i < 50) curve = 0.3;
-                    if (i > 55 && i < 70) curve = -0.5;
-                    if (i > 75 && i < 85) curve = 0.8;
-
-                    // Add hills
-                    if (i > 15 && i < 25) y = Math.sin((i - 15) / 10 * Math.PI) * 500;
-                    if (i > 45 && i < 60) y = Math.sin((i - 45) / 15 * Math.PI) * 800;
-
-                    this.roadSegments.push({
-                        index: i,
-                        curve: curve,
-                        y: y
-                    });
-                }
-            }
-
-            addSprite3D(segment, offsetX, sprite, scale) {
-                const obj = this.add.sprite(0, 0, sprite);
-                obj.setVisible(false);
-                this.sprites3D.push({
-                    sprite: obj,
-                    segment: segment,
-                    offsetX: offsetX,
-                    scale: scale || 1
-                });
-            }
-
-            project3D(p, cameraX, cameraY, cameraZ) {
-                const width = this.cameras.main.width;
-                const height = this.cameras.main.height;
-                const roadWidth = 2000;
-
-                p.camera = {
-                    x: (p.world.x || 0) - cameraX,
-                    y: (p.world.y || 0) - cameraY,
-                    z: (p.world.z || 0) - cameraZ
-                };
-
-                const scale = this.cameraDepth / p.camera.z;
-
-                p.screen = {
-                    scale: scale,
-                    x: Math.round(width / 2 + scale * p.camera.x * width / 2),
-                    y: Math.round(height / 2 - scale * p.camera.y * height / 2),
-                    w: Math.round(scale * roadWidth * width / 2)
-                };
-            }
-
-            update(time, delta) {
-                const deltaSeconds = delta / 1000;
-
-                // Player input
-                const accel = 500;
-                const decel = 300;
-                const maxSpeed = 1000;
-                const turnSpeed = 3;
-
-                if (this.cursors.up.isDown) {
-                    this.speed = Math.min(this.speed + accel * deltaSeconds, maxSpeed);
-                } else if (this.cursors.down.isDown) {
-                    this.speed = Math.max(this.speed - decel * deltaSeconds, 0);
-                } else {
-                    this.speed = Math.max(this.speed - decel * 0.3 * deltaSeconds, 0);
-                }
-
-                if (this.cursors.left.isDown) {
-                    this.playerX -= turnSpeed * deltaSeconds;
-                    this.playerCar.angle = -8;
-                    this.playerCar.setScale(1, 0.95); // Slight tilt effect
-                }
-                if (this.cursors.right.isDown) {
-                    this.playerX += turnSpeed * deltaSeconds;
-                    this.playerCar.angle = 8;
-                    this.playerCar.setScale(1, 0.95); // Slight tilt effect
-                }
-
-                if (!this.cursors.left.isDown && !this.cursors.right.isDown) {
-                    this.playerCar.angle = 0;
-                    this.playerCar.setScale(1, 1);
-                }
-
-                // Update position
-                this.position += this.speed * deltaSeconds;
-
-                // Keep player on track
-                this.playerX = Math.max(-1, Math.min(1, this.playerX));
-
-                // Render the 3D road
-                this.render3DRoad();
-
-                // Update UI
-                this.speedText.setText('Speed: ' + Math.floor(this.speed) + ' km/h');
-                this.scoreText.setText('Distance: ' + Math.floor(this.position / 10) + ' m');
-            }
-
-            render3DRoad() {
-                const width = this.cameras.main.width;
-                const height = this.cameras.main.height;
-                const drawDistance = 300;
-
-                this.roadGraphics.clear();
-
-                const baseSegment = Math.floor(this.position / this.segmentLength);
-                const basePercent = (this.position % this.segmentLength) / this.segmentLength;
-
-                let x = 0;
-                let dx = 0;
-
-                // Adjust camera height for first person mode
-                const cameraYOffset = this.firstPersonMode ? 800 : 1500;
-
-                // Sky
-                this.roadGraphics.fillStyle(0x72B5E8, 1);
-                this.roadGraphics.fillRect(0, 0, width, height / 2);
-
-                // Ground/Horizon
-                this.roadGraphics.fillStyle(0x5FA05A, 1);
-                this.roadGraphics.fillRect(0, height / 2, width, height / 2);
-
-                // Calculate all segment projections first
-                const projectedSegments = [];
-
-                for (let n = 0; n < drawDistance; n++) {
-                    const segment = this.roadSegments[(baseSegment + n) % this.roadSegments.length];
-                    const z = (n + basePercent) * this.segmentLength;
-
-                    if (z < this.cameraDepth) continue;
-
-                    const camX = this.playerX * 2000;
-                    const camY = cameraYOffset; // Use dynamic camera height
-                    const camZ = this.position;
-
-                    const p = {
-                        world: {
-                            x: x,
-                            y: segment.y,
-                            z: z
-                        },
-                        screen: {}
-                    };
-
-                    this.project3D(p, camX, camY, camZ);
-
-                    x += dx;
-                    dx += segment.curve;
-
-                    if (p.screen.scale > 0 && p.screen.y < height) {
-                        projectedSegments.push({
-                            n: n,
-                            screen: p.screen,
-                            segment: segment
-                        });
-                    }
-                }
-
-                // Draw segments from far to near
-                for (let i = projectedSegments.length - 1; i >= 0; i--) {
-                    const proj = projectedSegments[i];
-                    const p = proj.screen;
-                    const n = proj.n;
-
-                    // Limit Y to prevent rendering issues
-                    const segmentY = Math.max(0, Math.min(height, p.y));
-
-                    if (segmentY >= height) continue;
-
-                    const grassColor = (n + baseSegment) % 2 === 0 ? 0x10AA10 : 0x0E9A0E;
-                    const roadColor = (n + baseSegment) % 2 === 0 ? 0x6B6B6B : 0x555555;
-                    const lineColor = 0xFFFFFF;
-
-                    // Grass
-                    this.roadGraphics.fillStyle(grassColor, 1);
-                    this.roadGraphics.fillRect(0, segmentY, width, height);
-
-                    // Road
-                    const roadW = Math.min(width * 2, Math.max(0, p.w * 0.8));
-                    this.roadGraphics.fillStyle(roadColor, 1);
-                    this.roadGraphics.fillRect(
-                        Math.max(-width, p.x - roadW),
-                        segmentY,
-                        Math.min(width * 3, roadW * 2),
-                        height
-                    );
-
-                    // Road markings (center line)
-                    if (n % 3 === 0 && roadW > 20) {
-                        const lineW = Math.max(2, p.w * 0.03);
-                        this.roadGraphics.fillStyle(lineColor, 1);
-                        this.roadGraphics.fillRect(
-                            p.x - lineW / 2,
-                            segmentY,
-                            lineW,
-                            height
-                        );
-                    }
-
-                    // Road edges (rumble strips)
-                    const edgeW = Math.max(2, p.w * 0.08);
-                    const edgeColor = (n + baseSegment) % 2 === 0 ? 0xFF0000 : 0xFFFFFF;
-                    this.roadGraphics.fillStyle(edgeColor, 1);
-
-                    // Left edge
-                    this.roadGraphics.fillRect(
-                        Math.max(-width, p.x - roadW - edgeW),
-                        segmentY,
-                        edgeW,
-                        height
-                    );
-
-                    // Right edge
-                    this.roadGraphics.fillRect(
-                        Math.min(width * 2, p.x + roadW),
-                        segmentY,
-                        edgeW,
-                        height
-                    );
-                }
-
-                // Render 3D sprites (trees, cars, etc.)
-                let visibleCount = 0;
-                this.sprites3D.forEach(obj => {
-                    // Calculate which segment this object is on relative to current position
-                    const absoluteSegment = obj.segment;
-                    const currentSegment = Math.floor(this.position / this.segmentLength);
-                    const relativeSegment = absoluteSegment - currentSegment;
-
-                    // Only render if within draw distance
-                    if (relativeSegment < 0 || relativeSegment > drawDistance) {
-                        obj.sprite.setVisible(false);
-                        return;
-                    }
-
-                    const segment = this.roadSegments[absoluteSegment % this.roadSegments.length];
-                    const z = relativeSegment * this.segmentLength - (this.position % this.segmentLength);
-
-                    if (z <= 0) {
-                        obj.sprite.setVisible(false);
-                        return;
-                    }
-
-                    const scale = this.cameraDepth / z;
-
-                    if (scale > 0.001 && scale < 10) {
-                        // Find the projected road position for this segment
-                        const projIndex = projectedSegments.findIndex(p => p.n === relativeSegment);
-
-                        let screenX, screenY;
-
-                        if (projIndex >= 0) {
-                            const proj = projectedSegments[projIndex];
-                            // Position object relative to the road - MUCH MORE VISIBLE
-                            screenX = proj.screen.x + obj.offsetX * proj.screen.w * 0.5;
-                            screenY = proj.screen.y - 100 * scale - segment.y * scale * 0.01;
-                        } else {
-                            // Fallback positioning - VISIBLE
-                            screenX = width / 2 + obj.offsetX * 300 * scale;
-                            screenY = height / 2 - 100 * scale - segment.y * scale * 0.01;
-                        }
-
-                        // Keep objects on screen
-                        if (screenY > -200 && screenY < height + 200 && screenX > -200 && screenX < width + 200) {
-                            obj.sprite.setPosition(screenX, screenY);
-
-                            // Make objects bigger
-                            const finalScale = scale * obj.scale * 1.5;
-                            obj.sprite.setScale(finalScale);
-
-                            // Depth: closer = higher (but below player at 1000)
-                            const depth = 50 + (drawDistance - relativeSegment) * 5;
-                            obj.sprite.setDepth(depth);
-                            obj.sprite.setVisible(true);
-                            obj.sprite.setAlpha(1);
-                            obj.sprite.clearTint();
-
-                            visibleCount++;
-                        } else {
-                            obj.sprite.setVisible(false);
-                        }
-                    } else {
-                        obj.sprite.setVisible(false);
-                    }
-                });
-
-                // Debug info every 60 frames
-                if (!this.frameCounter) this.frameCounter = 0;
-                this.frameCounter++;
-                if (this.frameCounter % 60 === 0) {
-                    console.log(`👁️ Visible: ${visibleCount}/${this.sprites3D.length} | Pos: ${Math.floor(this.position)} | Segment: ${baseSegment}`);
-                }
-
-                // Update player car position and visibility based on camera mode
-                const currentSegment = this.roadSegments[baseSegment % this.roadSegments.length];
-                const screenCenterOffset = -currentSegment.curve * 100;
-
-                if (this.firstPersonMode) {
-                    // First person - hide car, show dashboard
-                    this.playerCar.setVisible(false);
-                    this.renderDashboard(width, height);
-                } else {
-                    // Third person - show car
-                    this.playerCar.setVisible(true);
-                    this.playerCar.x = width / 2 + this.playerX * 150 + screenCenterOffset;
-                    // Clear dashboard if exists
-                    if (this.dashboardGraphics) {
-                        this.dashboardGraphics.clear();
-                    }
-                }
-            }
-
-            renderDashboard(width, height) {
-                // Create dashboard graphics if doesn't exist
-                if (!this.dashboardGraphics) {
-                    this.dashboardGraphics = this.add.graphics();
-                    this.dashboardGraphics.setDepth(1500);
-                }
-
-                this.dashboardGraphics.clear();
-
-                // Dashboard base - bottom of screen
-                this.dashboardGraphics.fillStyle(0x2A2A2A, 1);
-                this.dashboardGraphics.fillRect(0, height - 150, width, 150);
-
-                // Dashboard top curve
-                this.dashboardGraphics.fillStyle(0x1A1A1A, 1);
-                this.dashboardGraphics.fillRoundedRect(0, height - 160, width, 20, 10);
-
-                // Steering wheel - bottom center
-                const wheelX = width / 2;
-                const wheelY = height - 50;
-
-                // Steering wheel rim
-                this.dashboardGraphics.lineStyle(8, 0x222222, 1);
-                this.dashboardGraphics.strokeCircle(wheelX, wheelY, 45);
-
-                // Steering wheel spokes
-                this.dashboardGraphics.lineStyle(6, 0x333333, 1);
-                this.dashboardGraphics.lineBetween(wheelX - 30, wheelY, wheelX + 30, wheelY);
-                this.dashboardGraphics.lineBetween(wheelX, wheelY - 30, wheelX, wheelY + 30);
-
-                // Steering wheel center (with logo)
-                this.dashboardGraphics.fillStyle(0xFF8C00, 1);
-                this.dashboardGraphics.fillCircle(wheelX, wheelY, 12);
-
-                // Rotate steering wheel based on player input
-                if (this.cursors.left.isDown) {
-                    // Visual feedback - could animate wheel rotation
-                }
-
-                // Dashboard meters
-                const meterY = height - 120;
-
-                // Speedometer - left side
-                this.dashboardGraphics.lineStyle(3, 0x00FF88, 1);
-                this.dashboardGraphics.strokeCircle(width * 0.25, meterY, 35);
-                this.dashboardGraphics.fillStyle(0x00FF88, 1);
-
-                // Speed needle
-                const speedAngle = (this.speed / 1000) * Math.PI - Math.PI;
-                const needleLength = 30;
-                this.dashboardGraphics.lineStyle(2, 0xFF0000, 1);
-                this.dashboardGraphics.lineBetween(
-                    width * 0.25,
-                    meterY,
-                    width * 0.25 + Math.cos(speedAngle) * needleLength,
-                    meterY + Math.sin(speedAngle) * needleLength
+        });
+
+        // Camera toggle
+        document.getElementById('camera-toggle').addEventListener('click', () => {
+            firstPersonMode = !firstPersonMode;
+            document.getElementById('camera-toggle').textContent =
+                firstPersonMode ? 'Camera: First Person' : 'Camera: Third Person';
+        });
+
+        // Update camera position
+        function updateCamera() {
+            if (firstPersonMode) {
+                // First person view - simple and stable
+                camera.position.set(
+                    carGroup.position.x,
+                    carGroup.position.y + 1.3,
+                    carGroup.position.z - 0.5
+                );
+                camera.lookAt(
+                    carGroup.position.x,
+                    carGroup.position.y + 1.2,
+                    carGroup.position.z - 50
                 );
 
-                // RPM meter - right side
-                this.dashboardGraphics.lineStyle(3, 0xFF8800, 1);
-                this.dashboardGraphics.strokeCircle(width * 0.75, meterY, 35);
+                // Show cockpit and position it relative to camera
+                cockpitGroup.visible = true;
+                cockpitGroup.position.copy(camera.position);
+                cockpitGroup.rotation.copy(camera.rotation);
 
-                // RPM needle (simulated based on speed)
-                const rpm = (this.speed / 1000) * 8000;
-                const rpmAngle = (rpm / 8000) * Math.PI - Math.PI;
-                this.dashboardGraphics.lineStyle(2, 0xFF0000, 1);
-                this.dashboardGraphics.lineBetween(
-                    width * 0.75,
-                    meterY,
-                    width * 0.75 + Math.cos(rpmAngle) * needleLength,
-                    meterY + Math.sin(rpmAngle) * needleLength
+                // Hide player car in first person
+                carGroup.visible = false;
+            } else {
+                // Third person view - simple and stable
+                camera.position.set(
+                    carGroup.position.x,
+                    carGroup.position.y + 4,
+                    carGroup.position.z + 10
+                );
+                camera.lookAt(
+                    carGroup.position.x,
+                    carGroup.position.y + 0.5,
+                    carGroup.position.z - 10
                 );
 
-                // Side mirrors (FPP view)
-                // Left mirror
-                this.dashboardGraphics.fillStyle(0x1A1A1A, 1);
-                this.dashboardGraphics.fillRoundedRect(10, height - 250, 80, 50, 5);
-                this.dashboardGraphics.fillStyle(0x4A4A4A, 0.5);
-                this.dashboardGraphics.fillRoundedRect(15, height - 245, 70, 40, 3);
+                // Hide cockpit in third person
+                cockpitGroup.visible = false;
 
-                // Right mirror
-                this.dashboardGraphics.fillStyle(0x1A1A1A, 1);
-                this.dashboardGraphics.fillRoundedRect(width - 90, height - 250, 80, 50, 5);
-                this.dashboardGraphics.fillStyle(0x4A4A4A, 0.5);
-                this.dashboardGraphics.fillRoundedRect(width - 85, height - 245, 70, 40, 3);
-
-                // Windshield frame edges (for immersion)
-                this.dashboardGraphics.fillStyle(0x1A1A1A, 1);
-                this.dashboardGraphics.fillRect(0, 0, 30, height - 150);
-                this.dashboardGraphics.fillRect(width - 30, 0, 30, height - 150);
+                // Show player car in third person
+                carGroup.visible = true;
             }
         }
 
-        const config = {
-            type: Phaser.AUTO,
-            width: 800,
-            height: 600,
-            scene: [GameScene],
-            pixelArt: false,
-            antialias: true
-        };
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
 
-        const game = new Phaser.Game(config);
+            // Player input - Realistic physics
+            if (keys.ArrowUp) {
+                velocity = Math.min(velocity + acceleration, maxSpeed);
+            } else if (keys.ArrowDown) {
+                // Braking
+                velocity = Math.max(velocity - brakeForce, 0);
+            } else {
+                // Natural deceleration (drag + rolling resistance)
+                velocity = Math.max(velocity - deceleration, 0);
+            }
+
+            // Apply drag (air resistance)
+            velocity *= drag;
+
+            // Update speed from velocity
+            speed = velocity;
+
+            // Realistic turning - slower at high speed
+            const speedFactor = Math.max(0.3, 1 - (speed / maxSpeed) * 0.5);
+            const currentTurnSpeed = turnSpeed * speedFactor;
+
+            if (keys.ArrowLeft) {
+                playerX = Math.max(playerX - currentTurnSpeed, -8);
+                const tiltAngle = -0.1 * (speed / maxSpeed);
+                carGroup.rotation.set(0, Math.PI, tiltAngle);
+                // Rotate steering wheel
+                steeringWheel.rotation.z = -0.5;
+                spoke1.rotation.y = -0.5;
+                spoke2.rotation.y = -0.5;
+                steeringCenter.rotation.y = -0.5;
+            } else if (keys.ArrowRight) {
+                playerX = Math.min(playerX + currentTurnSpeed, 8);
+                const tiltAngle = 0.1 * (speed / maxSpeed);
+                carGroup.rotation.set(0, Math.PI, tiltAngle);
+                // Rotate steering wheel
+                steeringWheel.rotation.z = 0.5;
+                spoke1.rotation.y = 0.5;
+                spoke2.rotation.y = 0.5;
+                steeringCenter.rotation.y = 0.5;
+            } else {
+                carGroup.rotation.set(0, Math.PI, 0);
+                // Reset steering wheel
+                steeringWheel.rotation.z = 0;
+                spoke1.rotation.y = 0;
+                spoke2.rotation.y = 0;
+                spoke2.rotation.y = 0;
+                steeringCenter.rotation.y = 0;
+            }
+
+            // Update position
+            position += speed;
+
+            // Position car - player controls X position manually
+            carGroup.position.x = playerX;
+
+            // Rotate wheels - realistic rotation based on speed
+            wheels.forEach(wheel => {
+                wheel.rotation.x += speed * 0.8;
+            });
+
+            // Move road markings along curves
+            markings.forEach(marking => {
+                marking.mesh.position.z += speed;
+                if (marking.mesh.position.z > 20) {
+                    marking.mesh.position.z = -800;
+                }
+                // Update X position based on curve
+                marking.mesh.position.x = getRoadCurve(marking.mesh.position.z);
+            });
+
+            // Move trees along curves
+            trees.forEach(tree => {
+                tree.position.z += speed;
+                if (tree.position.z > 20) {
+                    tree.position.z = -800;
+                    tree.userData.side = Math.random() > 0.5 ? 1 : -1;
+                    tree.userData.offset = 15 + Math.random() * 30;
+                }
+                // Position trees relative to road curve
+                const roadOffset = getRoadCurve(tree.position.z);
+                tree.position.x = roadOffset + (tree.userData.side || 1) * (tree.userData.offset || 20);
+            });
+
+            // Move AI cars and check collisions
+            aiCars.forEach(aiCar => {
+                aiCar.group.position.z += speed - aiCar.speed;
+                if (aiCar.group.position.z > 20) {
+                    aiCar.group.position.z = -800;
+                    aiCar.laneOffset = (Math.random() - 0.5) * 8;
+                }
+
+                // Position AI cars following the road curve
+                const roadOffset = getRoadCurve(aiCar.group.position.z);
+                aiCar.group.position.x = roadOffset + (aiCar.laneOffset || 0);
+
+                // Simple collision detection
+                const dx = carGroup.position.x - aiCar.group.position.x;
+                const dz = carGroup.position.z - aiCar.group.position.z;
+                const distance = Math.sqrt(dx * dx + dz * dz);
+
+                // If collision detected (within 3.5 units)
+                if (distance < 3.5) {
+                    // Push player away from AI car
+                    const angle = Math.atan2(dx, dz);
+                    playerX += Math.sin(angle) * 0.5;
+                    playerX = Math.max(-8, Math.min(8, playerX)); // Keep in bounds
+
+                    // Realistic collision - slow down based on impact
+                    velocity *= 0.6;
+                    speed = velocity;
+                }
+            });
+
+            // No automatic steering - player must control the car manually
+
+            // Update camera
+            updateCamera();
+
+            // Update UI - Realistic speed display
+            const speedKmh = Math.floor(speed * 80); // More realistic km/h conversion
+            document.getElementById('speed').textContent = speedKmh;
+            document.getElementById('distance').textContent = Math.floor(position * 10);
+
+            renderer.render(scene, camera);
+        }
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Start animation
+        animate();
+        } // End of initGame
     </script>
 </body>
 </html>

@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(start firefox \"C:\\Users\\Jan25\\IdeaProjects\\claude-code\\rokit\\game.html\")"
+      "Bash(start firefox \"C:\\Users\\Jan25\\IdeaProjects\\claude-code\\rokit\\game.html\")",
+      "Bash(start \"\" \"C:\\Users\\Jan25\\IdeaProjects\\platform-game\\drive.html\")"
     ],
     "deny": []
   }
