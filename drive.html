@@ -49,6 +49,18 @@
         #camera-toggle:hover {
             background: rgba(85, 85, 85, 0.9);
         }
+        #countdown {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #FFD700;
+            font-size: 120px;
+            font-weight: bold;
+            text-shadow: 4px 4px 8px rgba(0,0,0,0.9);
+            z-index: 200;
+            display: none;
+        }
     </style>
 </head>
 <body>
@@ -58,6 +70,7 @@
     </div>
     <div id="instructions">Arrow Keys: Drive</div>
     <button id="camera-toggle">Camera: Third Person</button>
+    <div id="countdown">3</div>
 
     <script>
         // Wait for Three.js to load
@@ -139,6 +152,34 @@
             return 0; // No curves, straight road
         }
 
+        // Start line - bright checkered pattern (stays in place)
+        const startLineGeometry = new THREE.PlaneGeometry(roadWidth, 1.5);
+        const startLineMaterial = new THREE.MeshBasicMaterial({
+            color: 0xFFFFFF,
+            transparent: true,
+            opacity: 0.9
+        });
+        const startLine = new THREE.Mesh(startLineGeometry, startLineMaterial);
+        startLine.rotation.x = -Math.PI / 2;
+        startLine.position.set(0, 0.03, -50);
+        startLine.userData.isStatic = true; // Mark as static - don't move
+        scene.add(startLine);
+
+        // Checkered pattern on start line (black squares)
+        const checkerSize = 1.5;
+        const startLineCheckers = [];
+        for (let x = -roadWidth/2; x < roadWidth/2; x += checkerSize * 2) {
+            const checker = new THREE.Mesh(
+                new THREE.PlaneGeometry(checkerSize, 1.5),
+                new THREE.MeshBasicMaterial({ color: 0x000000 })
+            );
+            checker.rotation.x = -Math.PI / 2;
+            checker.position.set(x + checkerSize/2, 0.04, -50);
+            checker.userData.isStatic = true; // Mark as static - don't move
+            scene.add(checker);
+            startLineCheckers.push(checker);
+        }
+
         // Road markings - realistic lane dividers
         const markingGeometry = new THREE.PlaneGeometry(0.3, 8);
         const markingMaterial = new THREE.MeshBasicMaterial({ color: 0xFFFFFF });
@@ -152,25 +193,251 @@
         }
 
 
-        // Grass on sides - realistic green
-        const grassGeometry = new THREE.PlaneGeometry(200, roadLength);
-        const grassMaterial = new THREE.MeshStandardMaterial({
-            color: 0x4A7C2C,
-            roughness: 0.95,
-            metalness: 0.0
+        // Sidewalk on sides - concrete/pavement
+        const sidewalkGeometry = new THREE.PlaneGeometry(200, roadLength);
+        const sidewalkMaterial = new THREE.MeshStandardMaterial({
+            color: 0x888888,
+            roughness: 0.85,
+            metalness: 0.1
         });
 
-        const grassLeft = new THREE.Mesh(grassGeometry, grassMaterial);
-        grassLeft.rotation.x = -Math.PI / 2;
-        grassLeft.position.x = -110;
-        grassLeft.receiveShadow = true;
-        scene.add(grassLeft);
+        const sidewalkLeft = new THREE.Mesh(sidewalkGeometry, sidewalkMaterial);
+        sidewalkLeft.rotation.x = -Math.PI / 2;
+        sidewalkLeft.position.x = -110;
+        sidewalkLeft.receiveShadow = true;
+        scene.add(sidewalkLeft);
 
-        const grassRight = new THREE.Mesh(grassGeometry, grassMaterial);
-        grassRight.rotation.x = -Math.PI / 2;
-        grassRight.position.x = 110;
-        grassRight.receiveShadow = true;
-        scene.add(grassRight);
+        const sidewalkRight = new THREE.Mesh(sidewalkGeometry, sidewalkMaterial);
+        sidewalkRight.rotation.x = -Math.PI / 2;
+        sidewalkRight.position.x = 110;
+        sidewalkRight.receiveShadow = true;
+        scene.add(sidewalkRight);
+
+        // Road barriers (bandy)
+        const barriers = [];
+        const barrierPostGeometry = new THREE.BoxGeometry(0.3, 1.2, 0.3);
+        const barrierPostMaterial = new THREE.MeshStandardMaterial({
+            color: 0xFF0000,
+            metalness: 0.3,
+            roughness: 0.7
+        });
+        const barrierRailGeometry = new THREE.BoxGeometry(0.2, 0.3, 8);
+        const barrierRailMaterial = new THREE.MeshStandardMaterial({
+            color: 0xFFFFFF,
+            metalness: 0.5,
+            roughness: 0.5
+        });
+
+        // Create barriers on both sides
+        for (let i = -800; i < 300; i += 8) {
+            // Left barrier
+            const leftPost = new THREE.Mesh(barrierPostGeometry, barrierPostMaterial);
+            leftPost.position.set(getRoadCurve(i) - 10, 0.6, i);
+            leftPost.castShadow = true;
+            scene.add(leftPost);
+
+            const leftRail = new THREE.Mesh(barrierRailGeometry, barrierRailMaterial);
+            leftRail.position.set(getRoadCurve(i) - 10, 0.9, i);
+            leftRail.castShadow = true;
+            scene.add(leftRail);
+
+            barriers.push({
+                leftPost: leftPost,
+                leftRail: leftRail,
+                originalZ: i
+            });
+
+            // Right barrier
+            const rightPost = new THREE.Mesh(barrierPostGeometry, barrierPostMaterial);
+            rightPost.position.set(getRoadCurve(i) + 10, 0.6, i);
+            rightPost.castShadow = true;
+            scene.add(rightPost);
+
+            const rightRail = new THREE.Mesh(barrierRailGeometry, barrierRailMaterial);
+            rightRail.position.set(getRoadCurve(i) + 10, 0.9, i);
+            rightRail.castShadow = true;
+            scene.add(rightRail);
+
+            barriers[barriers.length - 1].rightPost = rightPost;
+            barriers[barriers.length - 1].rightRail = rightRail;
+        }
+
+        // Fan zone - Spectators on grandstands
+        const spectators = [];
+        const grandstands = [];
+        const spectatorColors = [0xFF6B6B, 0x4ECDC4, 0xFFE66D, 0x95E1D3, 0xF38181];
+
+        // Create simplified grandstands - much simpler for performance
+        const standSegmentLength = 30;
+
+        // Simple large platform blocks
+        const standGeometry = new THREE.BoxGeometry(6, 0.6, standSegmentLength);
+        const standMaterial = new THREE.MeshStandardMaterial({
+            color: 0x3A3A3A,
+            metalness: 0.3,
+            roughness: 0.7
+        });
+
+        // Simple seat row (one long block)
+        const seatRowGeometry = new THREE.BoxGeometry(5.5, 0.4, standSegmentLength - 2);
+        const seatMaterial = new THREE.MeshStandardMaterial({
+            color: 0x2196F3,
+            metalness: 0.2,
+            roughness: 0.6
+        });
+
+        // Back wall for grandstands
+        const backWallGeometry = new THREE.BoxGeometry(6, 5, standSegmentLength);
+        const backWallMaterial = new THREE.MeshStandardMaterial({
+            color: 0x505050,
+            metalness: 0.1,
+            roughness: 0.9
+        });
+
+        // Create continuous grandstands - left and right side
+        for (let side = -1; side <= 1; side += 2) {
+            const xOffset = 14; // Behind barriers
+
+            // Create segments along the track (very reduced for performance)
+            for (let i = 0; i < 15; i++) {
+                const zPos = -250 + i * standSegmentLength;
+
+                // Create grandstand structure with 6 rows
+                for (let row = 0; row < 6; row++) {
+                    // Each higher row is further from the track
+                    const rowXOffset = xOffset + row * 2.5;
+                    const rowZOffset = row * 1.5;
+                    const rowHeight = 0.2 + row * 1.2;
+
+                    // Create a group for this row segment
+                    const rowGroup = new THREE.Group();
+
+                    // Platform
+                    const stand = new THREE.Mesh(standGeometry, standMaterial);
+                    stand.position.set(0, rowHeight, 0);
+                    stand.castShadow = false;
+                    stand.receiveShadow = false;
+                    rowGroup.add(stand);
+
+                    // Single seat row (simplified)
+                    const seatRow = new THREE.Mesh(seatRowGeometry, seatMaterial);
+                    seatRow.position.set(0, rowHeight + 0.5, 0);
+                    seatRow.castShadow = false;
+                    rowGroup.add(seatRow);
+
+                    // Add back wall only for the highest row
+                    if (row === 5) {
+                        const backWall = new THREE.Mesh(backWallGeometry, backWallMaterial);
+                        backWall.position.set(0, 3.5, 0);
+                        backWall.castShadow = false;
+                        rowGroup.add(backWall);
+                    }
+
+                    // Position the entire group
+                    rowGroup.position.set(
+                        getRoadCurve(zPos) + side * rowXOffset,
+                        0,
+                        zPos + rowZOffset
+                    );
+
+                    scene.add(rowGroup);
+
+                    grandstands.push({
+                        group: rowGroup,
+                        side: side,
+                        baseX: rowXOffset,
+                        baseZ: zPos + rowZOffset,
+                        rowZOffset: rowZOffset
+                    });
+
+                    // Add spectators on all rows
+                    if (i % 2 === 0) {
+                        for (let s = 0; s < 4; s++) {
+                        const spectatorGroup = new THREE.Group();
+
+                        // Body (sitting position - shorter)
+                        const bodyGeometry = new THREE.CylinderGeometry(0.3, 0.3, 0.8, 6);
+                        const bodyColor = spectatorColors[Math.floor(Math.random() * spectatorColors.length)];
+                        const bodyMaterial = new THREE.MeshStandardMaterial({ color: bodyColor });
+                        const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+                        body.position.y = 0.4;
+                        body.castShadow = false;
+                        spectatorGroup.add(body);
+
+                        // Head
+                        const headGeometry = new THREE.SphereGeometry(0.25, 6, 6);
+                        const skinTones = [0xFFDBAC, 0xF1C27D, 0xE0AC69, 0xC68642, 0x8D5524];
+                        const headMaterial = new THREE.MeshStandardMaterial({
+                            color: skinTones[Math.floor(Math.random() * skinTones.length)]
+                        });
+                        const head = new THREE.Mesh(headGeometry, headMaterial);
+                        head.position.y = 0.95;
+                        head.castShadow = false;
+                        spectatorGroup.add(head);
+
+                        // Arms raised (cheering)
+                        const armGeometry = new THREE.CylinderGeometry(0.1, 0.1, 0.8, 4);
+                        const armMaterial = new THREE.MeshStandardMaterial({ color: bodyColor });
+
+                        const leftArm = new THREE.Mesh(armGeometry, armMaterial);
+                        leftArm.position.set(-0.35, 0.8, 0);
+                        leftArm.rotation.z = Math.PI / 3;
+                        leftArm.castShadow = false;
+                        spectatorGroup.add(leftArm);
+
+                        const rightArm = new THREE.Mesh(armGeometry, armMaterial);
+                        rightArm.position.set(0.35, 0.8, 0);
+                        rightArm.rotation.z = -Math.PI / 3;
+                        rightArm.castShadow = false;
+                        spectatorGroup.add(rightArm);
+
+                        // Legs (sitting) - simplified
+                        const legGeometry = new THREE.CylinderGeometry(0.1, 0.1, 0.5, 4);
+                        const legMaterial = new THREE.MeshStandardMaterial({ color: 0x333333 });
+
+                        const leftLeg = new THREE.Mesh(legGeometry, legMaterial);
+                        leftLeg.position.set(-0.15, 0, 0.3);
+                        leftLeg.rotation.x = Math.PI / 2;
+                        leftLeg.castShadow = false;
+                        spectatorGroup.add(leftLeg);
+
+                        const rightLeg = new THREE.Mesh(legGeometry, legMaterial);
+                        rightLeg.position.set(0.15, 0, 0.3);
+                        rightLeg.rotation.x = Math.PI / 2;
+                        rightLeg.castShadow = false;
+                        spectatorGroup.add(rightLeg);
+
+                        // Position on grandstand
+                        const seatPosition = -12 + s * 8;
+
+                        spectatorGroup.userData.side = side;
+                        spectatorGroup.userData.baseX = rowXOffset;
+                        spectatorGroup.userData.baseZ = zPos + rowZOffset;
+                        spectatorGroup.userData.seatOffset = seatPosition;
+                        spectatorGroup.userData.row = row;
+                        spectatorGroup.userData.animOffset = Math.random() * Math.PI * 2;
+                        spectatorGroup.userData.rowZOffset = rowZOffset;
+                        spectatorGroup.userData.rowHeight = rowHeight;
+
+                        // Adjust height based on row - higher rows need more offset
+                        const heightOffset = row < 5 ? 1.5 : 2.0;
+                        spectatorGroup.userData.heightOffset = heightOffset;
+                        spectatorGroup.position.set(
+                            getRoadCurve(zPos) + side * rowXOffset,
+                            rowHeight + heightOffset,
+                            zPos + seatPosition + rowZOffset
+                        );
+
+                        // Face the track
+                        spectatorGroup.rotation.y = side > 0 ? -Math.PI / 2 : Math.PI / 2;
+
+                        scene.add(spectatorGroup);
+                        spectators.push(spectatorGroup);
+                        }
+                    }
+                }
+            }
+        }
 
         // Player car - Sports Car Design with realistic colors
         const carGroup = new THREE.Group();
@@ -338,7 +605,8 @@
         taillightRight.position.set(0.8, 0.6, -2.55);
         carGroup.add(taillightRight);
 
-        carGroup.position.set(0, 0.6, 0);
+        // Position player car at start line (center of first row)
+        carGroup.position.set(0, 0.6, -50);
         carGroup.rotation.y = Math.PI; // Face forward
         scene.add(carGroup);
 
@@ -454,46 +722,7 @@
         cockpitGroup.visible = false; // Hidden by default
         scene.add(cockpitGroup);
 
-        // Trees - Simple realistic trees
-        const trees = [];
-        const treeGeometry = new THREE.ConeGeometry(1.5, 5, 8);
-        const treeMaterial = new THREE.MeshStandardMaterial({
-            color: 0x2D6B22,
-            roughness: 0.9
-        });
-        const trunkGeometry = new THREE.CylinderGeometry(0.3, 0.35, 2);
-        const trunkMaterial = new THREE.MeshStandardMaterial({
-            color: 0x4A3728,
-            roughness: 0.95
-        });
-
-        for (let i = 0; i < 50; i++) {
-            const treeGroup = new THREE.Group();
-
-            const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
-            trunk.position.y = 1;
-            trunk.castShadow = true;
-            treeGroup.add(trunk);
-
-            const leaves = new THREE.Mesh(treeGeometry, treeMaterial);
-            leaves.position.y = 3.5;
-            leaves.castShadow = true;
-            treeGroup.add(leaves);
-
-            const side = Math.random() > 0.5 ? 1 : -1;
-            const offset = 15 + Math.random() * 30;
-            const zPos = -50 - i * 15 + Math.random() * 10;
-
-            treeGroup.userData.side = side;
-            treeGroup.userData.offset = offset;
-            treeGroup.position.set(
-                getRoadCurve(zPos) + side * offset,
-                0,
-                zPos
-            );
-            scene.add(treeGroup);
-            trees.push(treeGroup);
-        }
+        // Trees removed for better performance and visibility
 
         // AI cars - Sports Cars with realistic colors
         const aiCars = [];
@@ -502,10 +731,15 @@
             { body: 0xC0C0C0, accent: 0x000000 }, // Silver with black
             { body: 0x8B0000, accent: 0xFFD700 }, // Dark red with gold
             { body: 0x1C1C1C, accent: 0x00FF00 }, // Dark grey with green
-            { body: 0x003366, accent: 0xFFFFFF }  // Navy blue with white
+            { body: 0x003366, accent: 0xFFFFFF }, // Navy blue with white
+            { body: 0xFF6B00, accent: 0x000000 }, // Orange with black
+            { body: 0x9B59B6, accent: 0xFFD700 }, // Purple with gold
+            { body: 0x00FF88, accent: 0x1A1A1A }, // Green with black
+            { body: 0xFFD700, accent: 0xFF0000 }, // Gold with red
+            { body: 0x2ECC71, accent: 0xFFFFFF }  // Bright green with white
         ];
 
-        for (let i = 0; i < 5; i++) {
+        for (let i = 0; i < 10; i++) {
             const aiCarGroup = new THREE.Group();
             const config = aiCarConfigs[i % aiCarConfigs.length];
             const carColor = config.body;
@@ -604,30 +838,89 @@
                 aiCarGroup.add(rim);
             });
 
-            const laneOffset = (Math.random() - 0.5) * 8;
-            const zPos = -30 - i * 40;
+            // Position cars at start line in grid formation
+            // 5 cars per row, 2 rows
+            const carsPerRow = 5;
+            const row = Math.floor(i / carsPerRow);
+            const col = i % carsPerRow;
+            const laneSpacing = 3.5; // Space between cars horizontally
+            const rowSpacing = 6; // Space between rows
+
+            const laneOffset = (col - 2) * laneSpacing; // Center around middle (-2, -1, 0, 1, 2)
+            const zPos = -50 - (row * rowSpacing); // Start line at -50
             aiCarGroup.position.set(getRoadCurve(zPos) + laneOffset, 0, zPos);
             aiCarGroup.rotation.y = Math.PI; // Rotate 180 degrees to face forward
+
+            // Store wheels for rotation
+            const aiWheels = [];
+            wheelPositions.forEach(pos => {
+                aiCarGroup.children.forEach(child => {
+                    if (child.position.x === pos[0] && child.position.y === pos[1] && child.position.z === pos[2] && child.geometry.type === 'CylinderGeometry') {
+                        aiWheels.push(child);
+                    }
+                });
+            });
+
             scene.add(aiCarGroup);
             aiCars.push({
                 group: aiCarGroup,
-                speed: 0.05 + Math.random() * 0.1,
-                laneOffset: laneOffset
+                speed: 0,
+                laneOffset: laneOffset,
+                xPosition: laneOffset,
+                startZ: zPos, // Remember start position
+                throttle: 0, // Start from 0 - cars accelerate from standstill
+                targetThrottle: 3.5 + Math.random() * 0.4, // Target: 245-273 km/h
+                targetX: laneOffset,
+                wheels: aiWheels,
+                changeDirectionTimer: Math.random() * 300, // Random timer for direction changes
+                changeSpeedTimer: Math.random() * 200 // Random timer for speed changes
             });
         }
 
-        // Game state - Realistic physics
+        // Game state - Realistic physics inspired by Phaser car example
         let speed = 0;
         let position = 0;
         let playerX = 0;
-        let velocity = 0; // Current velocity for realistic acceleration
-        const maxSpeed = 3.5; // Higher max speed
-        const acceleration = 0.08; // Faster acceleration
-        const deceleration = 0.03; // Realistic deceleration
-        const brakeForce = 0.12; // Strong brakes
-        const turnSpeed = 0.12; // Slightly slower turning for realism
-        const drag = 0.98; // Air resistance
+        let throttle = 0; // Like in Phaser example - accumulates over time
+        const maxThrottle = 4.0; // Maximum throttle
+        const minThrottle = -1.5; // Reverse throttle
+        const throttleIncrement = 2.0; // How fast throttle increases (like 0.5 * delta in Phaser)
+        const throttleDecrement = 3.5; // How fast brakes work
+        const naturalDecay = 0.96; // Natural throttle decay (like angularDrag)
+        const turnSpeed = 0.15;
         let firstPersonMode = false;
+
+        // Race countdown state
+        let raceStarted = false;
+        let countdown = 3;
+        const countdownElement = document.getElementById('countdown');
+
+        // Start countdown sequence
+        function startCountdown() {
+            countdownElement.style.display = 'block';
+            countdownElement.textContent = countdown;
+
+            const countdownInterval = setInterval(() => {
+                countdown--;
+
+                if (countdown > 0) {
+                    countdownElement.textContent = countdown;
+                } else if (countdown === 0) {
+                    countdownElement.textContent = 'GO!';
+                    countdownElement.style.color = '#00FF00';
+                } else {
+                    // Hide countdown and start race
+                    countdownElement.style.display = 'none';
+                    raceStarted = true;
+                    clearInterval(countdownInterval);
+                }
+            }, 1000); // 1 second intervals
+        }
+
+        // Start countdown when game loads
+        setTimeout(() => {
+            startCountdown();
+        }, 500); // Small delay after game loads
 
         // Input
         const keys = {
@@ -703,53 +996,76 @@
         function animate() {
             requestAnimationFrame(animate);
 
-            // Player input - Realistic physics
-            if (keys.ArrowUp) {
-                velocity = Math.min(velocity + acceleration, maxSpeed);
-            } else if (keys.ArrowDown) {
-                // Braking
-                velocity = Math.max(velocity - brakeForce, 0);
-            } else {
-                // Natural deceleration (drag + rolling resistance)
-                velocity = Math.max(velocity - deceleration, 0);
+            // Only process input if race has started
+            if (raceStarted) {
+                // Player input - Realistic physics like Phaser car example
+                if (keys.ArrowUp) {
+                    // Accelerate - throttle increases over time
+                    throttle += throttleIncrement * 0.016; // Approximate delta time
+                } else if (keys.ArrowDown) {
+                    // Brake/Reverse - throttle decreases
+                    throttle -= throttleDecrement * 0.016;
+                }
+
+                // Clamp throttle between min and max (like Phaser.Math.Clamp)
+                throttle = Math.max(minThrottle, Math.min(maxThrottle, throttle));
             }
 
-            // Apply drag (air resistance)
-            velocity *= drag;
+            // Natural throttle decay when not pressing anything (like angularDrag)
+            if (raceStarted && !keys.ArrowUp && !keys.ArrowDown) {
+                throttle *= naturalDecay;
+                // Stop completely when very slow
+                if (Math.abs(throttle) < 0.01) {
+                    throttle = 0;
+                }
+            }
 
-            // Update speed from velocity
-            speed = velocity;
+            // Speed is directly based on throttle
+            speed = throttle;
 
-            // Realistic turning - slower at high speed
-            const speedFactor = Math.max(0.3, 1 - (speed / maxSpeed) * 0.5);
-            const currentTurnSpeed = turnSpeed * speedFactor;
+            // Realistic turning - only if race has started
+            if (raceStarted) {
+                const speedRatio = Math.abs(throttle) / maxThrottle;
+                const turnFactor = Math.max(0.4, 1 - speedRatio * 0.6);
+                const currentTurnSpeed = turnSpeed * turnFactor;
 
-            if (keys.ArrowLeft) {
-                playerX = Math.max(playerX - currentTurnSpeed, -8);
-                const tiltAngle = -0.1 * (speed / maxSpeed);
-                carGroup.rotation.set(0, Math.PI, tiltAngle);
-                // Rotate steering wheel
-                steeringWheel.rotation.z = -0.5;
-                spoke1.rotation.y = -0.5;
-                spoke2.rotation.y = -0.5;
-                steeringCenter.rotation.y = -0.5;
-            } else if (keys.ArrowRight) {
-                playerX = Math.min(playerX + currentTurnSpeed, 8);
-                const tiltAngle = 0.1 * (speed / maxSpeed);
-                carGroup.rotation.set(0, Math.PI, tiltAngle);
-                // Rotate steering wheel
-                steeringWheel.rotation.z = 0.5;
-                spoke1.rotation.y = 0.5;
-                spoke2.rotation.y = 0.5;
-                steeringCenter.rotation.y = 0.5;
-            } else {
-                carGroup.rotation.set(0, Math.PI, 0);
-                // Reset steering wheel
-                steeringWheel.rotation.z = 0;
-                spoke1.rotation.y = 0;
-                spoke2.rotation.y = 0;
-                spoke2.rotation.y = 0;
-                steeringCenter.rotation.y = 0;
+                if (keys.ArrowLeft) {
+                    playerX = Math.max(playerX - currentTurnSpeed, -9);
+                    const tiltAngle = -0.15 * speedRatio;
+                    carGroup.rotation.set(0, Math.PI, tiltAngle);
+                    // Rotate steering wheel
+                    steeringWheel.rotation.z = -0.5;
+                    spoke1.rotation.y = -0.5;
+                    spoke2.rotation.y = -0.5;
+                    steeringCenter.rotation.y = -0.5;
+                } else if (keys.ArrowRight) {
+                    playerX = Math.min(playerX + currentTurnSpeed, 9);
+                    const tiltAngle = 0.15 * speedRatio;
+                    carGroup.rotation.set(0, Math.PI, tiltAngle);
+                    // Rotate steering wheel
+                    steeringWheel.rotation.z = 0.5;
+                    spoke1.rotation.y = 0.5;
+                    spoke2.rotation.y = 0.5;
+                    steeringCenter.rotation.y = 0.5;
+                } else {
+                    carGroup.rotation.set(0, Math.PI, 0);
+                    // Reset steering wheel
+                    steeringWheel.rotation.z = 0;
+                    spoke1.rotation.y = 0;
+                    spoke2.rotation.y = 0;
+                    spoke2.rotation.y = 0;
+                    steeringCenter.rotation.y = 0;
+                }
+            }
+
+            // Barrier collision - prevent going off road
+            if (playerX < -9) {
+                playerX = -9;
+                throttle *= 0.3; // Slow down on collision
+            }
+            if (playerX > 9) {
+                playerX = 9;
+                throttle *= 0.3; // Slow down on collision
             }
 
             // Update position
@@ -763,6 +1079,12 @@
                 wheel.rotation.x += speed * 0.8;
             });
 
+            // Move start line (so it stays in world position, not following player)
+            startLine.position.z += speed;
+            startLineCheckers.forEach(checker => {
+                checker.position.z += speed;
+            });
+
             // Move road markings along curves
             markings.forEach(marking => {
                 marking.mesh.position.z += speed;
@@ -773,30 +1095,146 @@
                 marking.mesh.position.x = getRoadCurve(marking.mesh.position.z);
             });
 
-            // Move trees along curves
-            trees.forEach(tree => {
-                tree.position.z += speed;
-                if (tree.position.z > 20) {
-                    tree.position.z = -800;
-                    tree.userData.side = Math.random() > 0.5 ? 1 : -1;
-                    tree.userData.offset = 15 + Math.random() * 30;
+            // Move barriers
+            barriers.forEach(barrier => {
+                barrier.leftPost.position.z += speed;
+                barrier.leftRail.position.z += speed;
+                barrier.rightPost.position.z += speed;
+                barrier.rightRail.position.z += speed;
+
+                if (barrier.leftPost.position.z > 20) {
+                    barrier.leftPost.position.z = -800;
+                    barrier.leftRail.position.z = -800;
+                    barrier.rightPost.position.z = -800;
+                    barrier.rightRail.position.z = -800;
                 }
-                // Position trees relative to road curve
-                const roadOffset = getRoadCurve(tree.position.z);
-                tree.position.x = roadOffset + (tree.userData.side || 1) * (tree.userData.offset || 20);
+
+                // Update X position based on curve
+                const roadOffset = getRoadCurve(barrier.leftPost.position.z);
+                barrier.leftPost.position.x = roadOffset - 10;
+                barrier.leftRail.position.x = roadOffset - 10;
+                barrier.rightPost.position.x = roadOffset + 10;
+                barrier.rightRail.position.x = roadOffset + 10;
+            });
+
+            // Move grandstands
+            grandstands.forEach(grandstand => {
+                grandstand.group.position.z += speed;
+
+                if (grandstand.group.position.z > 50) {
+                    grandstand.group.position.z = -250 + grandstand.rowZOffset;
+                    grandstand.baseZ = -250 + grandstand.rowZOffset;
+                }
+
+                // Update X position based on curve
+                const roadOffset = getRoadCurve(grandstand.group.position.z - grandstand.rowZOffset);
+                grandstand.group.position.x = roadOffset + grandstand.side * grandstand.baseX;
+            });
+
+            // Move and animate spectators
+            const time = Date.now() * 0.001; // Current time for animation
+            spectators.forEach(spectator => {
+                spectator.position.z += speed;
+                if (spectator.position.z > 50) {
+                    spectator.position.z = -250 + spectator.userData.seatOffset + spectator.userData.rowZOffset;
+                    spectator.userData.baseZ = -250 + spectator.userData.rowZOffset;
+                }
+
+                // Position spectators relative to road curve and their seat
+                const roadOffset = getRoadCurve(spectator.position.z - spectator.userData.rowZOffset - spectator.userData.seatOffset);
+                spectator.position.x = roadOffset + spectator.userData.side * spectator.userData.baseX;
+
+                // Keep base height with small bounce animation
+                const wavePhase = time + spectator.userData.animOffset;
+                const bounce = Math.abs(Math.sin(wavePhase * 2)) * 0.15;
+                spectator.position.y = spectator.userData.rowHeight + spectator.userData.heightOffset + bounce;
+
+                // Animate arms waving
+                const armWave = Math.sin(wavePhase * 3) * 0.3;
+                if (spectator.children[2]) { // Left arm
+                    spectator.children[2].rotation.z = Math.PI / 3 + armWave;
+                }
+                if (spectator.children[3]) { // Right arm
+                    spectator.children[3].rotation.z = -Math.PI / 3 - armWave;
+                }
+
+                // Slight head bobbing
+                if (spectator.children[1]) { // Head
+                    spectator.children[1].position.y = 0.95 + bounce * 0.5;
+                }
             });
 
             // Move AI cars and check collisions
             aiCars.forEach(aiCar => {
+                // Only let AI move if race has started
+                if (raceStarted) {
+                    // AI Speed control - change speed over time
+                    aiCar.changeSpeedTimer--;
+                    if (aiCar.changeSpeedTimer <= 0) {
+                        aiCar.targetThrottle = 3.5 + Math.random() * 0.4; // Speed 245-273 km/h
+                        aiCar.changeSpeedTimer = 100 + Math.random() * 200; // Reset timer
+                    }
+
+                    // Smoothly adjust throttle towards target
+                    if (aiCar.throttle < aiCar.targetThrottle) {
+                        aiCar.throttle += 0.02;
+                    } else if (aiCar.throttle > aiCar.targetThrottle) {
+                        aiCar.throttle -= 0.02;
+                    }
+
+                    // Update AI car speed based on throttle (same as player)
+                    aiCar.speed = aiCar.throttle;
+                } else {
+                    // Keep AI stationary during countdown
+                    aiCar.speed = 0;
+                }
+
+                // AI Steering - only during race
+                if (raceStarted) {
+                    // AI Steering - change lanes periodically
+                    aiCar.changeDirectionTimer--;
+                    if (aiCar.changeDirectionTimer <= 0) {
+                        aiCar.targetX = (Math.random() - 0.5) * 16; // New random lane position
+                        aiCar.changeDirectionTimer = 150 + Math.random() * 250; // Reset timer
+                    }
+
+                    // Smoothly steer towards target X position
+                    const steerSpeed = 0.08;
+                    if (aiCar.xPosition < aiCar.targetX) {
+                        aiCar.xPosition += steerSpeed;
+                    } else if (aiCar.xPosition > aiCar.targetX) {
+                        aiCar.xPosition -= steerSpeed;
+                    }
+
+                    // Keep AI cars within road bounds
+                    aiCar.xPosition = Math.max(-9, Math.min(9, aiCar.xPosition));
+
+                    // Apply tilt based on steering direction
+                    const steerDiff = aiCar.targetX - aiCar.xPosition;
+                    const tiltAngle = Math.max(-0.15, Math.min(0.15, steerDiff * 0.02));
+                    aiCar.group.rotation.set(0, Math.PI, tiltAngle);
+                } else {
+                    // Keep straight during countdown
+                    aiCar.group.rotation.set(0, Math.PI, 0);
+                }
+
+                // Rotate AI car wheels
+                if (aiCar.wheels) {
+                    aiCar.wheels.forEach(wheel => {
+                        wheel.rotation.x += aiCar.speed * 0.8;
+                    });
+                }
+
                 aiCar.group.position.z += speed - aiCar.speed;
                 if (aiCar.group.position.z > 20) {
                     aiCar.group.position.z = -800;
-                    aiCar.laneOffset = (Math.random() - 0.5) * 8;
+                    aiCar.xPosition = (Math.random() - 0.5) * 8;
+                    aiCar.targetX = aiCar.xPosition;
                 }
 
                 // Position AI cars following the road curve
                 const roadOffset = getRoadCurve(aiCar.group.position.z);
-                aiCar.group.position.x = roadOffset + (aiCar.laneOffset || 0);
+                aiCar.group.position.x = roadOffset + aiCar.xPosition;
 
                 // Simple collision detection
                 const dx = carGroup.position.x - aiCar.group.position.x;
@@ -808,11 +1246,14 @@
                     // Push player away from AI car
                     const angle = Math.atan2(dx, dz);
                     playerX += Math.sin(angle) * 0.5;
-                    playerX = Math.max(-8, Math.min(8, playerX)); // Keep in bounds
+                    playerX = Math.max(-9, Math.min(9, playerX)); // Keep in bounds
 
-                    // Realistic collision - slow down based on impact
-                    velocity *= 0.6;
-                    speed = velocity;
+                    // Realistic collision - reduce throttle on impact
+                    throttle *= 0.5;
+                    speed = throttle;
+
+                    // AI car also slows down on collision
+                    aiCar.throttle *= 0.7;
                 }
             });
 
@@ -822,7 +1263,7 @@
             updateCamera();
 
             // Update UI - Realistic speed display
-            const speedKmh = Math.floor(speed * 80); // More realistic km/h conversion
+            const speedKmh = Math.floor(Math.abs(throttle) * 70); // Convert throttle to km/h
             document.getElementById('speed').textContent = speedKmh;
             document.getElementById('distance').textContent = Math.floor(position * 10);
 
