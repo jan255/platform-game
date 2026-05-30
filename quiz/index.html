@@ -1,0 +1,716 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quiz Rodzinny</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Arial', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      color: #fff;
+      overflow-x: hidden;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      transition: background 0.8s ease;
+    }
+
+    .emojis {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .floating-emoji {
+      position: fixed;
+      font-size: 2.5em;
+      pointer-events: none;
+      opacity: 0.85;
+      filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.5));
+    }
+
+    .container {
+      max-width: 1000px;
+      width: 90%;
+      background: rgba(0, 0, 0, 0.55);
+      backdrop-filter: blur(8px);
+      border: 3px solid rgba(255, 255, 255, 0.6);
+      border-radius: 25px;
+      padding: 40px;
+      box-shadow: 0 0 50px rgba(0, 0, 0, 0.4);
+      position: relative;
+      z-index: 1;
+    }
+
+    .title-screen {
+      text-align: center;
+    }
+
+    h1 {
+      font-size: 3.5em;
+      text-shadow: 2px 2px 10px rgba(0, 0, 0, 0.6);
+      margin-bottom: 20px;
+      letter-spacing: 2px;
+    }
+
+    .subtitle {
+      font-size: 1.5em;
+      margin-bottom: 40px;
+      text-shadow: 1px 1px 5px rgba(0,0,0,0.5);
+    }
+
+    .category-badge {
+      display: inline-block;
+      background: rgba(255, 255, 255, 0.95);
+      color: #333;
+      padding: 15px 30px;
+      border-radius: 50px;
+      font-size: 1.6em;
+      font-weight: bold;
+      margin-bottom: 25px;
+      box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+    }
+
+    .question-container {
+      display: none;
+      animation: fadeIn 0.5s;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .question-number {
+      font-size: 1.3em;
+      margin-bottom: 15px;
+      text-shadow: 1px 1px 4px rgba(0,0,0,0.5);
+    }
+
+    .question {
+      font-size: 1.9em;
+      margin-bottom: 20px;
+      line-height: 1.4;
+      text-shadow: 1px 1px 5px rgba(0,0,0,0.5);
+    }
+
+    .question-image {
+      display: block;
+      max-width: 100%;
+      max-height: 320px;
+      margin: 0 auto 25px;
+      border-radius: 15px;
+      border: 4px solid rgba(255, 255, 255, 0.8);
+      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.4);
+      object-fit: contain;
+      background: rgba(255,255,255,0.1);
+    }
+
+    .image-placeholder {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      height: 200px;
+      margin: 0 auto 25px;
+      max-width: 400px;
+      border: 4px dashed rgba(255, 255, 255, 0.6);
+      border-radius: 15px;
+      background: rgba(255, 255, 255, 0.1);
+      font-size: 1.1em;
+      text-align: center;
+      padding: 20px;
+      color: rgba(255,255,255,0.8);
+    }
+
+    .image-placeholder .ph-icon { font-size: 3em; margin-bottom: 10px; }
+
+    .options {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 15px;
+      margin-bottom: 25px;
+    }
+
+    .option {
+      background: rgba(255, 255, 255, 0.2);
+      border: 2px solid rgba(255, 255, 255, 0.7);
+      padding: 18px;
+      border-radius: 12px;
+      font-size: 1.25em;
+      transition: all 0.3s;
+      cursor: pointer;
+      text-shadow: 1px 1px 3px rgba(0,0,0,0.4);
+    }
+
+    .option:hover {
+      background: rgba(255, 255, 255, 0.4);
+      transform: scale(1.03);
+    }
+
+    .answer-section {
+      display: none;
+      background: rgba(46, 204, 113, 0.3);
+      border: 2px solid #2ecc71;
+      padding: 22px;
+      border-radius: 12px;
+      margin-bottom: 25px;
+      animation: fadeIn 0.5s;
+    }
+
+    .answer-label {
+      font-size: 1.4em;
+      margin-bottom: 10px;
+      font-weight: bold;
+    }
+
+    .answer-text {
+      font-size: 1.7em;
+    }
+
+    .buttons {
+      display: flex;
+      gap: 15px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    button {
+      background: rgba(255, 255, 255, 0.95);
+      color: #333;
+      border: none;
+      padding: 16px 32px;
+      font-size: 1.2em;
+      border-radius: 50px;
+      cursor: pointer;
+      font-weight: bold;
+      transition: all 0.3s;
+      box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+    }
+
+    button:hover {
+      transform: scale(1.05);
+      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.4);
+    }
+
+    button:active {
+      transform: scale(0.98);
+    }
+
+    .progress {
+      text-align: center;
+      margin-top: 25px;
+      font-size: 1.2em;
+      text-shadow: 1px 1px 4px rgba(0,0,0,0.5);
+    }
+
+    .finish-screen {
+      display: none;
+      text-align: center;
+      animation: fadeIn 0.5s;
+    }
+
+    .finish-title {
+      font-size: 3em;
+      margin-bottom: 20px;
+      animation: pulse 2s infinite;
+      text-shadow: 2px 2px 10px rgba(0,0,0,0.6);
+    }
+
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.05); }
+    }
+
+    .emoji-big {
+      font-size: 5em;
+      margin: 25px 0;
+    }
+
+    /* ===== Tryb wgrywania zdjec ===== */
+    .setup-btn {
+      background: rgba(255, 255, 255, 0.25);
+      color: #fff;
+      border: 2px solid rgba(255,255,255,0.7);
+      font-size: 0.95em;
+      padding: 12px 24px;
+      margin-top: 18px;
+    }
+    .setup-btn:hover { background: rgba(255,255,255,0.4); }
+
+    .setup-screen {
+      display: none;
+      text-align: center;
+      animation: fadeIn 0.5s;
+    }
+    .setup-screen h2 { margin-bottom: 15px; }
+    .setup-screen p { font-size: 1.1em; margin-bottom: 18px; line-height: 1.5; }
+    .file-label {
+      display: inline-block;
+      background: rgba(255,255,255,0.95);
+      color: #333;
+      padding: 16px 32px;
+      border-radius: 50px;
+      cursor: pointer;
+      font-weight: bold;
+      font-size: 1.2em;
+      margin-bottom: 20px;
+      box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+    }
+    #fileInput { display: none; }
+    .load-status {
+      font-size: 1.1em;
+      margin: 15px 0;
+      min-height: 1.4em;
+    }
+    .status-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
+      gap: 8px;
+      margin: 18px 0;
+      max-height: 220px;
+      overflow-y: auto;
+      padding: 5px;
+    }
+    .status-cell {
+      background: rgba(255,255,255,0.15);
+      border: 1px solid rgba(255,255,255,0.4);
+      border-radius: 8px;
+      padding: 6px 4px;
+      font-size: 0.85em;
+    }
+    .status-cell.ok { background: rgba(46,204,113,0.4); border-color: #2ecc71; }
+
+    @media (max-width: 768px) {
+      h1 { font-size: 2.3em; }
+      .question { font-size: 1.4em; }
+      .option { font-size: 1.05em; }
+      .category-badge { font-size: 1.2em; }
+      .options { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+<div class="emojis" id="emojis"></div>
+
+<!-- Tutaj zapisywane sa zaszyte zdjecia (base64) po eksporcie -->
+<script id="embeddedImages" type="application/json">{}</script>
+
+<div class="container">
+  <div class="title-screen" id="titleScreen">
+    <h1>🎉 QUIZ RODZINNY 🎉</h1>
+    <div class="subtitle">Sprawdź swoją wiedzę!</div>
+    <div class="emoji-big">🏆🎈🌟</div>
+    <div><button id="startBtn">ROZPOCZNIJ QUIZ</button></div>
+    <div><button id="setupBtn" class="setup-btn">📷 Wgraj zdjęcia / Eksportuj plik</button></div>
+  </div>
+
+  <div class="setup-screen" id="setupScreen">
+    <h2>📷 Wgrywanie zdjęć</h2>
+    <p>
+      Wybierz swoje zdjęcia. Najlepiej nazwij pliki <strong>pytanie1.png</strong>, <strong>pytanie2.png</strong> … <strong>pytanie30.png</strong> —
+      wtedy każde trafi do właściwego pytania automatycznie.<br>
+      (Jeśli nazwy nie mają numerów, zdjęcia zostaną przypisane po kolei.)
+    </p>
+    <label class="file-label" for="fileInput">Wybierz zdjęcia (możesz zaznaczyć wszystkie naraz)</label>
+    <input type="file" id="fileInput" accept="image/*" multiple>
+    <div class="load-status" id="loadStatus"></div>
+    <div class="status-grid" id="statusGrid"></div>
+    <div class="buttons">
+      <button id="exportBtn">💾 Pobierz samodzielny plik HTML</button>
+      <button id="backBtn">⬅️ Powrót</button>
+    </div>
+  </div>
+
+  <div class="question-container" id="questionContainer">
+    <div class="category-badge" id="categoryBadge"></div>
+    <div class="question-number" id="questionNumber"></div>
+    <div class="question" id="question"></div>
+    <div id="imageArea"></div>
+    <div class="options" id="options"></div>
+
+    <div class="answer-section" id="answerSection">
+      <div class="answer-label">✅ POPRAWNA ODPOWIEDŹ:</div>
+      <div class="answer-text" id="answerText"></div>
+    </div>
+
+    <div class="buttons">
+      <button id="prevBtn" style="display: none;">⬅️ POPRZEDNIE</button>
+      <button id="showAnswerBtn">POKAŻ ODPOWIEDŹ</button>
+      <button id="nextBtn">NASTĘPNE ➡️</button>
+    </div>
+
+    <div class="progress" id="progress"></div>
+  </div>
+
+  <div class="finish-screen" id="finishScreen">
+    <div class="finish-title">🎉 GRATULACJE! 🎉</div>
+    <div class="emoji-big">🏆⭐🎊</div>
+    <h2 style="margin-bottom: 25px;">Ukończyliście Quiz Rodzinny!</h2>
+    <p style="font-size: 1.4em; margin-bottom: 25px;">Świetna zabawa! 👏</p>
+    <button id="restartBtn">ZAGRAJ PONOWNIE</button>
+  </div>
+</div>
+
+<script>
+  // ====== PYTANIA ======
+  // Pole "img" sluzy jako rezerwa (sciezka do pliku). Jesli wgrasz/zaszyjesz zdjecia,
+  // beda one mialy pierwszenstwo. Aby zaszyc zdjecia na stale: kliknij "Wgraj zdjecia",
+  // wybierz pliki i kliknij "Pobierz samodzielny plik HTML".
+  const questions = [
+    {
+      category: "🐾 ZWIERZĘTA",
+      questions: [
+        { q: "Jakiej rasy jest nasz pies?", img: "obrazki/zdjecie1.png", options: ["A) Labrador", "B) Mops", "C) Border Collie", "D) Szpic Miniaturowy"], answer: "D) Szpic Miniaturowy" },
+        { q: "Ile km na godzinę idzie ślimak?", img: "obrazki/zdjecie2.png", options: ["A) 0,03", "B) 0,06", "C) 0,02", "D) 0,01"], answer: "A) 0,03" },
+        { q: "Jakie zwierzę jest największym ssakiem na świecie?", img: "obrazki/zdjecie3.png", options: ["A) Żyrafa", "B) Słoń afrykański", "C) Płetwal Błękitny", "D) Mrówka"], answer: "C) Płetwal Błękitny" },
+        { q: "Jakie zwierzę jest najszybszym zwierzęciem na świecie?", img: "obrazki/zdjecie4.png", options: ["A) Gepard", "B) Wilk", "C) Sikorka", "D) Sokół Wędrowny"], answer: "D) Sokół Wędrowny" },
+        { q: "Jakie zwierzę jest nazywane „królem dżungli”?", img: "obrazki/zdjecie5.png", options: ["A) Tygrys", "B) Wąż", "C) Lew", "D) Goryl"], answer: "C) Lew" }
+      ]
+    },
+    {
+      category: "🌍 KRAJE / MIASTA",
+      questions: [
+        { q: "Co to za flaga?", img: "obrazki/zdjecie6.png", options: ["A) Włochy", "B) Irlandia", "C) Wybrzeże Kości Słoniowej", "D) Indie"], answer: "C) Wybrzeże Kości Słoniowej" },
+        { q: "Co to za herb?", img: "obrazki/zdjecie7.png", options: ["A) Malbork", "B) Częstochowa", "C) Mediolan", "D) Praga"], answer: "D) Praga" },
+        { q: "Z jakiego kraju pochodzą ninja?", img: "obrazki/zdjecie8.png", options: ["A) Indie", "B) Chiny", "C) Japonia", "D) Korea Północna"], answer: "C) Japonia" },
+        { q: "W jakim mieście jest LEGOLAND?", img: "obrazki/zdjecie9.png", options: ["A) Dubaj", "B) Wlora", "C) Parnawa", "D) Warkala"], answer: "A) Dubaj" },
+        { q: "Z jakiego kraju pochodzi miasto Koruhev?", img: "obrazki/zdjecie10.png", options: ["A) Słowacja", "B) Łotwa", "C) Dania", "D) Czechy"], answer: "D) Czechy" }
+      ]
+    },
+    {
+      category: "🏛️ ZABYTKI",
+      questions: [
+        { q: "Z jakiego kraju jest ten zabytek?", img: "obrazki/zdjecie11.png", options: ["A) Hiszpania", "B) Holandia", "C) Włochy", "D) Dania"], answer: "B) Holandia" },
+        { q: "W jakim mieście znajduje się to koloseum?", img: "obrazki/zdjecie12.png", options: ["A) Essen", "B) Mosul", "C) Beruniy", "D) El Jem"], answer: "D) El Jem" },
+        { q: "W jakim kraju znajduje się Machu Picchu?", img: "obrazki/zdjecie13.png", options: ["A) Meksyk", "B) Chile", "C) Peru", "D) Brazylia"], answer: "C) Peru" },
+        { q: "Który zabytek wpisano na listę UNESCO jako przykład architektury Majów?", img: "obrazki/zdjecie14.png", options: ["A) Chichen Itza", "B) Petra", "C) Angkor Wat", "D) Koloseum"], answer: "A) Chichen Itza" },
+        { q: "W którym wieku rozpoczęto budowę Katedry Notre-Dame?", img: "obrazki/zdjecie15.png", options: ["A) XV wieku", "B) XI wieku", "C) IX wieku", "D) XII wieku"], answer: "D) XII wieku" }
+      ]
+    },
+    {
+      category: "⚽ PIŁKARZE",
+      questions: [
+        { q: "Kto jest kapitanem reprezentacji Peru?", img: "obrazki/zdjecie16.png", options: ["A) Luis Ramos", "B) Pedro", "C) Rivera", "D) Pena"], answer: "A) Luis Ramos" },
+        { q: "W którym roku odbyły się pierwsze mistrzostwa świata?", img: "obrazki/zdjecie17.png", options: ["A) 1932", "B) 1934", "C) 1930", "D) 1938"], answer: "C) 1930" },
+        { q: "Jak nazywa się legendarny były środkowy pomocnik FC Barcelony?", img: "obrazki/zdjecie18.png", options: ["A) Zidane", "B) Xavi", "C) Stragen", "D) Trent"], answer: "B) Xavi" },
+        { q: "Kto był królem strzelców FIFA World Cup 2018?", img: "obrazki/zdjecie19.png", options: ["A) Cristiano Ronaldo", "B) Lionel Messi", "C) Griezmann", "D) Harry Kane"], answer: "D) Harry Kane" },
+        { q: "Ile razy Zidane wygrał Ligę Mistrzów jako trener Realu Madryt?", img: "obrazki/zdjecie20.png", options: ["A) 1", "B) 2", "C) 3", "D) 4"], answer: "C) 3" }
+      ]
+    },
+    {
+      category: "🛒 SKLEPY",
+      questions: [
+        { q: "Jak nazywa się sklep, który ma nazwę pasa po japońsku?", img: "obrazki/zdjecie21.png", options: ["A) Obi", "B) Ikea", "C) Carrefour", "D) Lidl"], answer: "A) Obi" },
+        { q: "Z jakiego kraju pochodzi firma Ikea?", img: "obrazki/zdjecie22.png", options: ["A) Finlandia", "B) Szwecja", "C) Norwegia", "D) Dania"], answer: "B) Szwecja" },
+        { q: "Kto jest założycielem firmy Amazon?", img: "obrazki/zdjecie23.png", options: ["A) Elon Musk", "B) Jeff Bezos", "C) Bill Gates", "D) Mark Zuckerberg"], answer: "B) Jeff Bezos" },
+        { q: "Która firma jest właścicielem marki Reserved?", img: "obrazki/zdjecie24.png", options: ["A) CCC Group", "B) LPP", "C) Inditex", "D) H&M Group"], answer: "B) LPP" },
+        { q: "W którym kraju powstała sieć Decathlon?", img: "obrazki/zdjecie25.png", options: ["A) Anglia", "B) Niemcy", "C) Hiszpania", "D) Francja"], answer: "D) Francja" }
+      ]
+    },
+    {
+      category: "🎮 GRY KOMPUTEROWE",
+      questions: [
+        { q: "Jak nazywa się najpopularniejsza (najlepiej sprzedająca się) gra na świecie?", img: "obrazki/zdjecie26.png", options: ["A) Fortnite", "B) Roblox", "C) FC 26", "D) Minecraft"], answer: "D) Minecraft" },
+        { q: "Która gra jest grą platformową?", img: "obrazki/zdjecie27.png", options: ["A) Age of Decadence", "B) AI War", "C) Eversion", "D) Dominions 5"], answer: "C) Eversion" },
+        { q: "Ile postaci (skinów) jest w grze Fortnite?", img: "obrazki/zdjecie28.png", options: ["A) 340-440", "B) 955-1275", "C) 2170-2380", "D) 2565+"], answer: "D) 2565+" },
+        { q: "Ile gier ma Roblox?", img: "obrazki/zdjecie29.png", options: ["A) 40 milionów+", "B) Ok. 80 tysięcy", "C) Ok. 40 tysięcy", "D) Ok. 200 gier"], answer: "A) 40 milionów+" },
+        { q: "Ile gier jest na konsoli PS5?", img: "obrazki/zdjecie30.png", options: ["A) Ok. 20 milionów", "B) Ok. 6955 gier", "C) Ok. 4520 gier", "D) Ok. 2805 gier"], answer: "B) Ok. 6955 gier" }
+      ]
+    }
+  ];
+
+  const backgrounds = [
+    "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+    "linear-gradient(135deg, #f093fb 0%, #f5576c 100%)",
+    "linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)",
+    "linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)",
+    "linear-gradient(135deg, #fa709a 0%, #fee140 100%)",
+    "linear-gradient(135deg, #30cfd0 0%, #330867 100%)",
+    "linear-gradient(135deg, #a8edea 0%, #fed6e3 100%)",
+    "linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%)",
+    "linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%)",
+    "linear-gradient(135deg, #ff6e7f 0%, #bfe9ff 100%)",
+    "linear-gradient(135deg, #e0c3fc 0%, #8ec5fc 100%)",
+    "linear-gradient(135deg, #f6d365 0%, #fda085 100%)",
+    "linear-gradient(135deg, #5ee7df 0%, #b490ca 100%)",
+    "linear-gradient(135deg, #c3cfe2 0%, #c3cfe2 100%)",
+    "linear-gradient(135deg, #ff758c 0%, #ff7eb3 100%)",
+    "linear-gradient(135deg, #0ba360 0%, #3cba92 100%)",
+    "linear-gradient(135deg, #00c6fb 0%, #005bea 100%)",
+    "linear-gradient(135deg, #f74cb5 0%, #ffaa85 100%)",
+    "linear-gradient(135deg, #6a11cb 0%, #2575fc 100%)",
+    "linear-gradient(135deg, #ff5858 0%, #f09819 100%)",
+    "linear-gradient(135deg, #11998e 0%, #38ef7d 100%)",
+    "linear-gradient(135deg, #ee0979 0%, #ff6a00 100%)",
+    "linear-gradient(135deg, #7f00ff 0%, #e100ff 100%)",
+    "linear-gradient(135deg, #f7971e 0%, #ffd200 100%)",
+    "linear-gradient(135deg, #1fa2ff 0%, #12d8fa 100%)",
+    "linear-gradient(135deg, #e52d27 0%, #b31217 100%)",
+    "linear-gradient(135deg, #00b09b 0%, #96c93d 100%)",
+    "linear-gradient(135deg, #fc5c7d 0%, #6a82fb 100%)",
+    "linear-gradient(135deg, #f12711 0%, #f5af19 100%)",
+    "linear-gradient(135deg, #8a2387 0%, #e94057 50%, #f27121 100%)"
+  ];
+
+  const emojiSet = ["🎈","🎉","⭐","🦋","❤️","🌟","🎊","🌈","🍭","🎵","🎁","🌸","🐶","⚽","🏆","🎮","🚗","🍕","🐱","💫"];
+
+  // zaszyte zdjecia (base64), wczytane z tagu <script id="embeddedImages">
+  let embedded = {};
+  try {
+    embedded = JSON.parse(document.getElementById('embeddedImages').textContent || '{}');
+  } catch (e) { embedded = {}; }
+
+  let allQuestions = [];
+  let currentQuestionIndex = 0;
+
+  function getImageSrc(index) {
+    // index 0-based; numer pytania = index + 1
+    const num = index + 1;
+    if (embedded[num]) return embedded[num];
+    return allQuestions[index].img;
+  }
+
+  function createEmojis() {
+    const container = document.getElementById('emojis');
+    for (let i = 0; i < 14; i++) {
+      const span = document.createElement('div');
+      span.className = 'floating-emoji';
+      span.textContent = emojiSet[Math.floor(Math.random() * emojiSet.length)];
+      span.style.top = Math.random() * 90 + '%';
+      span.style.left = '-100px';
+      container.appendChild(span);
+      animateEmoji(span);
+    }
+  }
+
+  function animateEmoji(el) {
+    const duration = 15000 + Math.random() * 20000;
+    const topStart = Math.random() * 90;
+    const topEnd = topStart + (Math.random() * 20 - 10);
+    el.style.top = topStart + '%';
+    el.animate([
+      { left: '-100px', top: topStart + '%' },
+      { left: 'calc(100% + 100px)', top: topEnd + '%' }
+    ], {
+      duration: duration,
+      iterations: Infinity,
+      delay: Math.random() * -duration
+    });
+  }
+
+  function buildAllQuestions() {
+    allQuestions = [];
+    questions.forEach(cat => {
+      cat.questions.forEach(q => {
+        allQuestions.push({
+          category: cat.category,
+          q: q.q,
+          img: q.img,
+          options: q.options,
+          answer: q.answer
+        });
+      });
+    });
+  }
+
+  function startQuiz() {
+    buildAllQuestions();
+    currentQuestionIndex = 0;
+    document.getElementById('titleScreen').style.display = 'none';
+    document.getElementById('setupScreen').style.display = 'none';
+    document.getElementById('questionContainer').style.display = 'block';
+    showQuestion();
+  }
+
+  function showQuestion() {
+    const current = allQuestions[currentQuestionIndex];
+
+    document.body.style.background = backgrounds[currentQuestionIndex % backgrounds.length];
+
+    document.getElementById('categoryBadge').textContent = current.category;
+    document.getElementById('questionNumber').textContent = 'Pytanie ' + (currentQuestionIndex + 1) + ' z ' + allQuestions.length;
+    document.getElementById('question').textContent = current.q;
+
+    const imageArea = document.getElementById('imageArea');
+    imageArea.innerHTML = '';
+    const src = getImageSrc(currentQuestionIndex);
+    if (src && src.trim() !== '') {
+      const img = document.createElement('img');
+      img.className = 'question-image';
+      img.src = src;
+      img.alt = 'Zdjęcie do pytania';
+      img.onerror = function() {
+        const ph = document.createElement('div');
+        ph.className = 'image-placeholder';
+        ph.innerHTML = '<div class="ph-icon">⚠️</div><div>Brak zdjęcia do pytania ' + (currentQuestionIndex + 1) + '<br><small>Wgraj zdjęcia w menu startowym lub dodaj plik do folderu „obrazki".</small></div>';
+        imageArea.innerHTML = '';
+        imageArea.appendChild(ph);
+      };
+      imageArea.appendChild(img);
+    } else {
+      const ph = document.createElement('div');
+      ph.className = 'image-placeholder';
+      ph.innerHTML = '<div class="ph-icon">📷</div><div>Brak zdjęcia do pytania ' + (currentQuestionIndex + 1) + '</div>';
+      imageArea.appendChild(ph);
+    }
+
+    const optionsContainer = document.getElementById('options');
+    optionsContainer.innerHTML = '';
+    current.options.forEach(option => {
+      const div = document.createElement('div');
+      div.className = 'option';
+      div.textContent = option;
+      optionsContainer.appendChild(div);
+    });
+
+    document.getElementById('answerSection').style.display = 'none';
+    document.getElementById('showAnswerBtn').style.display = 'inline-block';
+
+    document.getElementById('prevBtn').style.display = (currentQuestionIndex === 0) ? 'none' : 'inline-block';
+    document.getElementById('nextBtn').style.display = 'inline-block';
+    document.getElementById('progress').textContent = 'Postęp: ' + (currentQuestionIndex + 1) + '/' + allQuestions.length;
+  }
+
+  function showAnswer() {
+    const current = allQuestions[currentQuestionIndex];
+    document.getElementById('answerText').textContent = current.answer;
+    document.getElementById('answerSection').style.display = 'block';
+    document.getElementById('showAnswerBtn').style.display = 'none';
+  }
+
+  function prevQuestion() {
+    if (currentQuestionIndex > 0) { currentQuestionIndex--; showQuestion(); }
+  }
+
+  function nextQuestion() {
+    currentQuestionIndex++;
+    if (currentQuestionIndex < allQuestions.length) { showQuestion(); }
+    else { showFinish(); }
+  }
+
+  function showFinish() {
+    document.getElementById('questionContainer').style.display = 'none';
+    document.getElementById('finishScreen').style.display = 'block';
+  }
+
+  function restartQuiz() {
+    currentQuestionIndex = 0;
+    document.body.style.background = backgrounds[0];
+    document.getElementById('finishScreen').style.display = 'none';
+    document.getElementById('titleScreen').style.display = 'block';
+  }
+
+  // ===== TRYB WGRYWANIA / EKSPORTU =====
+  function openSetup() {
+    document.getElementById('titleScreen').style.display = 'none';
+    document.getElementById('setupScreen').style.display = 'block';
+    renderStatusGrid();
+  }
+
+  function closeSetup() {
+    document.getElementById('setupScreen').style.display = 'none';
+    document.getElementById('titleScreen').style.display = 'block';
+  }
+
+  function renderStatusGrid() {
+    const grid = document.getElementById('statusGrid');
+    grid.innerHTML = '';
+    for (let i = 1; i <= 30; i++) {
+      const cell = document.createElement('div');
+      cell.className = 'status-cell' + (embedded[i] ? ' ok' : '');
+      cell.textContent = (embedded[i] ? '✅ ' : '') + i;
+      grid.appendChild(cell);
+    }
+    const count = Object.keys(embedded).length;
+    document.getElementById('loadStatus').textContent = 'Wczytane zdjęcia: ' + count + ' / 30';
+  }
+
+  function handleFiles(fileList) {
+    const files = Array.from(fileList);
+    // sortuj po numerze w nazwie, a jak brak - po nazwie
+    files.sort((a, b) => {
+      const na = parseInt((a.name.match(/\d+/) || [9999])[0], 10);
+      const nb = parseInt((b.name.match(/\d+/) || [9999])[0], 10);
+      return na - nb;
+    });
+
+    let pending = files.length;
+    if (pending === 0) return;
+
+    let seqCounter = 1;
+    files.forEach(file => {
+      const reader = new FileReader();
+      const match = file.name.match(/\d+/);
+      let num = match ? parseInt(match[0], 10) : null;
+      reader.onload = function(e) {
+        let target = num;
+        if (!target || target < 1 || target > 30) {
+          // brak numeru w nazwie - przypisz po kolei do wolnego miejsca
+          while (embedded[seqCounter] && seqCounter <= 30) seqCounter++;
+          target = seqCounter;
+          seqCounter++;
+        }
+        if (target >= 1 && target <= 30) {
+          embedded[target] = e.target.result;
+        }
+        pending--;
+        if (pending === 0) renderStatusGrid();
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function exportHtml() {
+    // zapisz zaszyte zdjecia do tagu script
+    document.getElementById('embeddedImages').textContent = JSON.stringify(embedded);
+    // upewnij sie, ze widoczny jest ekran startowy w wyeksportowanym pliku
+    document.getElementById('setupScreen').style.display = 'none';
+    document.getElementById('questionContainer').style.display = 'none';
+    document.getElementById('finishScreen').style.display = 'none';
+    document.getElementById('titleScreen').style.display = 'block';
+
+    const html = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'quiz-rodzinny-gotowy.html';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    // przywroc widok setup
+    document.getElementById('titleScreen').style.display = 'none';
+    document.getElementById('setupScreen').style.display = 'block';
+  }
+
+  // init
+  buildAllQuestions();
+  createEmojis();
+
+  document.getElementById('startBtn').addEventListener('click', startQuiz);
+  document.getElementById('setupBtn').addEventListener('click', openSetup);
+  document.getElementById('backBtn').addEventListener('click', closeSetup);
+  document.getElementById('fileInput').addEventListener('change', function(e) { handleFiles(e.target.files); });
+  document.getElementById('exportBtn').addEventListener('click', exportHtml);
+  document.getElementById('showAnswerBtn').addEventListener('click', showAnswer);
+  document.getElementById('prevBtn').addEventListener('click', prevQuestion);
+  document.getElementById('nextBtn').addEventListener('click', nextQuestion);
+  document.getElementById('restartBtn').addEventListener('click', restartQuiz);
+</script>
+</body>
+</html>
